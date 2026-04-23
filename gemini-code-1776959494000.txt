@@ -1,0 +1,17 @@
+club602-bot/
+├── .env                  # Keep your Discord Token & Firebase keys here!
+├── package.json          # Node dependencies (discord.js, firebase, dotenv)
+├── index.js              # The main entry point that wakes the bot up
+├── src/
+│   ├── config/
+│   │   └── firebase.js   # Database initialization and connection
+│   ├── commands/         # All your slash commands go here
+│   │   ├── events/
+│   │   │   ├── next.js   # /next [putting|darts|chainlink]
+│   │   │   └── rsvp.js   # /rsvp [event_id]
+│   │   └── general/
+│   │       ├── ping.js   # Basic health check to ensure the bot is alive
+│   │       └── remind.js # User reminder commands
+│   └── events/           # Discord event listeners
+│       ├── ready.js             # Runs once when the bot boots
+│       └── interactionCreate.js # Routes the slash commands to the right file
