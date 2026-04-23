@@ -3,6 +3,14 @@ const fs = require('fs');
 const path = require('path');
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 
+process.on('unhandledRejection', error => {
+    console.error('Unhandled promise rejection:', error);
+});
+
+process.on('uncaughtException', error => {
+    console.error('Uncaught Exception:', error);
+});
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // Load commands
@@ -39,3 +47,6 @@ for (const file of eventFiles) {
 }
 
 client.login(process.env.DISCORD_TOKEN);
+
+const reminderService = require('./src/services/reminderService');
+reminderService(client);
