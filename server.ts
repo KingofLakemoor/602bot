@@ -59,10 +59,176 @@ initProducer().catch(e => console.warn('[Server] Producer startup note:', e.mess
 initConcierge().catch(e => console.warn('[Server] Concierge startup note:', e.message));
 
 // ==========================================
-// CONTROL CENTER API ROUTES
+// RICK & ADMIN CONTROLLER APP API ROUTES
 // ==========================================
 
-// 1. Fleet Status & Configuration Health
+// 1. Admin Authentication Check (Rick / Admin session)
+app.post('/api/admin/auth', (req, res) => {
+  const { passkey, username } = req.body;
+  // Rick or Admin authentication
+  const validUsers = ['Rick', 'Admin', 'Lead Admin'];
+  if (passkey === 'rick602' || passkey === 'admin' || validUsers.includes(username)) {
+    return res.json({
+      authenticated: true,
+      user: {
+        username: username || 'Rick',
+        role: 'SUPER_ADMIN',
+        permissions: ['MANUAL_OVERRIDE_ALL', 'DEPLOY_COMMANDS', 'VIEW_TELEMETRY']
+      }
+    });
+  }
+  res.status(401).json({ authenticated: false, error: 'Invalid admin credentials' });
+});
+
+// 2. Read live Firestore Document State & Event Log
+app.get('/api/admin/firestore-state', (req, res) => {
+  if (db.__getAllDocs) {
+    return res.json({
+      documents: db.__getAllDocs(),
+      eventLogs: db.__getEventLogs ? db.__getEventLogs() : []
+    });
+  }
+  res.json({ documents: {}, eventLogs: [] });
+});
+
+// 3. Manual Overrides (The Controller App Strategy: Writes flags directly to Firestore documents)
+app.post('/api/admin/override', async (req, res) => {
+  const { action, payload = {}, adminUser = 'Rick' } = req.body;
+
+  try {
+    switch (action) {
+      // 🪓 OVERRIDE 1: Trigger Guillotine Blade Drop
+      case 'trigger_guillotine': {
+        const chopRef = db.collection('gridiron_exotics').doc('chop_league');
+        await chopRef.update({
+          guillotine_trigger: {
+            status: 'DROPPED',
+            droppedBy: adminUser,
+            victim: payload.victim || "Brad's Benchwarmers",
+            cutLineScore: payload.cutLineScore || 85.0,
+            timestamp: new Date().toISOString()
+          }
+        });
+        return res.json({
+          success: true,
+          action,
+          message: `Guillotine drop flag written to gridiron_exotics/chop_league by ${adminUser}.`
+        });
+      }
+
+      // Reset Guillotine
+      case 'reset_guillotine': {
+        const chopRef = db.collection('gridiron_exotics').doc('chop_league');
+        await chopRef.update({
+          guillotine_trigger: null
+        });
+        return res.json({ success: true, action, message: 'Guillotine status reset to active survival.' });
+      }
+
+      // ⚡ OVERRIDE 2: Emergency Line Freeze / Shift
+      case 'freeze_action_board': {
+        const flagsRef = db.collection('action_board').doc('control_flags');
+        await flagsRef.update({
+          emergency_freeze: true,
+          reason: payload.reason || 'Late Breaking NFL Injury News',
+          frozenBy: adminUser,
+          frozenAt: new Date().toISOString()
+        });
+        return res.json({
+          success: true,
+          action,
+          message: `Action board emergency freeze written to action_board/control_flags by ${adminUser}.`
+        });
+      }
+
+      case 'unfreeze_action_board': {
+        const flagsRef = db.collection('action_board').doc('control_flags');
+        await flagsRef.update({
+          emergency_freeze: false,
+          reason: null,
+          unfrozenBy: adminUser,
+          unfrozenAt: new Date().toISOString()
+        });
+        return res.json({ success: true, action, message: 'Action board thawed and trading resumed.' });
+      }
+
+      // 🎬 OVERRIDE 3: Emergency Roster Lock for ScriptLess
+      case 'lock_reality_rosters': {
+        const episodeRef = db.collection('scriptless').doc('current_episode');
+        await episodeRef.update({
+          emergency_lock: true,
+          reason: payload.reason || 'Airtime Deadline Enforced by Admin',
+          lockedBy: adminUser,
+          lockedAt: new Date().toISOString()
+        });
+        return res.json({
+          success: true,
+          action,
+          message: `Roster lockout written to scriptless/current_episode by ${adminUser}.`
+        });
+      }
+
+      case 'unlock_reality_rosters': {
+        const episodeRef = db.collection('scriptless').doc('current_episode');
+        await episodeRef.update({
+          emergency_lock: false,
+          reason: null
+        });
+        return res.json({ success: true, action, message: 'Roster lock released.' });
+      }
+
+      // 🍸 OVERRIDE 4: VIP Lounge Flash Announcement for Club 602
+      case 'broadcast_lounge_flash': {
+        const announcementRef = db.collection('club602_calendar').doc('announcements');
+        await announcementRef.update({
+          activeAlert: payload.message || 'Flash Tasting: Reserve Bourbon Vault open for next 60 minutes.',
+          priority: payload.priority || 'HIGH',
+          postedBy: adminUser,
+          postedAt: new Date().toISOString()
+        });
+        return res.json({
+          success: true,
+          action,
+          message: `VIP announcement written to club602_calendar/announcements by ${adminUser}.`
+        });
+      }
+
+      case 'clear_lounge_flash': {
+        const announcementRef = db.collection('club602_calendar').doc('announcements');
+        await announcementRef.update({
+          activeAlert: null
+        });
+        return res.json({ success: true, action, message: 'VIP announcement cleared.' });
+      }
+
+      // 🚨 OVERRIDE 5: Trigger Immediate Wall of Shame Audit
+      case 'request_shame_audit': {
+        const standingsRef = db.collection('gridiron_exotics').doc('standings');
+        await standingsRef.update({
+          shame_audit_requested: true,
+          requestedBy: adminUser,
+          requestedAt: new Date().toISOString()
+        });
+        return res.json({
+          success: true,
+          action,
+          message: `Shame audit trigger flag written to gridiron_exotics/standings by ${adminUser}.`
+        });
+      }
+
+      default:
+        return res.status(400).json({ error: `Unknown override action: ${action}` });
+    }
+  } catch (err) {
+    console.error('Manual override error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// FLEET STATUS & SIMULATOR ROUTES
+// ==========================================
+
 app.get('/api/fleet-status', (req, res) => {
   const bots = [
     {
@@ -132,51 +298,23 @@ app.get('/api/fleet-status', (req, res) => {
   });
 });
 
-// 2. Command Catalog
-app.get('/api/commands', (req, res) => {
-  res.json({
-    hubGuild: {
-      commissioner: commissionerCommands,
-      linemaker: linemakerCommands,
-      producer: producerCommands
-    },
-    club602Guild: {
-      concierge: conciergeCommands
-    }
-  });
-});
-
-// 3. Interactive Slash Command Simulator
 app.post('/api/simulate-command', async (req, res) => {
-  const { command, options = {}, user = { id: 'sim_user_1', username: 'QNW_Vanguard' } } = req.body;
+  const { command, options = {}, user = { id: 'usr_77', username: 'Vanguard_GM' } } = req.body;
 
   try {
     let result = null;
 
     switch (command) {
-      // COMMISSIONER
       case 'matchup': {
         const data = await getLeagueMatchups(process.env.FANTRAX_LEAGUE_IDS || 'gridiron_exotics_2026');
         const embed = buildMatchupEmbed({ matchups: data.matchups || [], week: data.week || 8 });
-        result = {
-          bot: 'Commissioner',
-          command: '/matchup',
-          visibility: 'PUBLIC',
-          isEphemeral: false,
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Commissioner', command: '/matchup', visibility: 'PUBLIC', isEphemeral: false, embed: embed.toJSON() };
         break;
       }
       case 'shame': {
         const violations = await auditRostersForShame(process.env.FANTRAX_LEAGUE_IDS || 'gridiron_exotics_2026');
         const embed = buildShameEmbed({ violations });
-        result = {
-          bot: 'Commissioner',
-          command: '/shame',
-          visibility: 'PUBLIC',
-          isEphemeral: false,
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Commissioner', command: '/shame', visibility: 'PUBLIC', isEphemeral: false, embed: embed.toJSON() };
         break;
       }
       case 'guillotine-check': {
@@ -186,193 +324,85 @@ app.post('/api/simulate-command', async (req, res) => {
           { team: 'Fourth & Twenty', manager: 'SmokeyP', points: 86.0, gapToSafety: 1.0, dangerLevel: 'SURVIVING BARELY' }
         ];
         const embed = buildGuillotineEmbed({ chopBlock, cutLineScore: 85.0 });
-        result = {
-          bot: 'Commissioner',
-          command: '/guillotine-check',
-          visibility: 'PUBLIC',
-          isEphemeral: false,
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Commissioner', command: '/guillotine-check', visibility: 'PUBLIC', isEphemeral: false, embed: embed.toJSON() };
         break;
       }
-
-      // LINEMAKER
       case 'board': {
         const windows = [
           { eventTitle: 'Chiefs vs 49ers', line: 'SF -2.5 (-110)', total: 'O/U 47.5', closesAt: new Date(Date.now() + 1000 * 60 * 45).toISOString(), poolSize: 28450, stuckCount: 2 },
-          { eventTitle: 'Eagles vs Cowboys', line: 'PHI -4.0 (-115)', total: 'O/U 51.0', closesAt: new Date(Date.now() + 1000 * 60 * 180).toISOString(), poolSize: 34100, stuckCount: 0 },
-          { eventTitle: 'Lions vs Packers', line: 'DET -1.5 (-108)', total: 'O/U 49.5', closesAt: new Date(Date.now() + 1000 * 60 * 240).toISOString(), poolSize: 19800, stuckCount: 1 }
+          { eventTitle: 'Eagles vs Cowboys', line: 'PHI -4.0 (-115)', total: 'O/U 51.0', closesAt: new Date(Date.now() + 1000 * 60 * 180).toISOString(), poolSize: 34100, stuckCount: 0 }
         ];
         const embed = buildBoardEmbed({ windows });
-        result = {
-          bot: 'Linemaker',
-          command: '/board',
-          visibility: 'EPHEMERAL',
-          isEphemeral: true,
-          ephemeralNotice: 'Only you can see this • Megachannel Rule Enforced',
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Linemaker', command: '/board', visibility: 'EPHEMERAL', isEphemeral: true, embed: embed.toJSON() };
         break;
       }
       case 'my-action': {
         const pendingPicks = [
-          { game: 'Chiefs vs 49ers', pick: '49ers -2.5', odds: '-110', wager: 100, toWin: 190.9, status: 'OPEN' },
-          { game: 'Eagles vs Cowboys', pick: 'Over 51.0', odds: '-105', wager: 50, toWin: 97.6, status: 'OPEN' }
+          { game: 'Chiefs vs 49ers', pick: '49ers -2.5', odds: '-110', wager: 100, toWin: 190.9, status: 'OPEN' }
         ];
         const embed = buildMyActionEmbed({ user, pendingPicks, bankroll: 1420 });
-        result = {
-          bot: 'Linemaker',
-          command: '/my-action',
-          visibility: 'EPHEMERAL',
-          isEphemeral: true,
-          ephemeralNotice: 'Only you can see this • Megachannel Rule Enforced',
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Linemaker', command: '/my-action', visibility: 'EPHEMERAL', isEphemeral: true, embed: embed.toJSON() };
         break;
       }
       case 'pro-claim': {
         const embed = buildProClaimEmbed({ user, streak: 5, bonusAmount: 150, newBalance: 1570 });
-        result = {
-          bot: 'Linemaker',
-          command: '/pro-claim',
-          visibility: 'EPHEMERAL',
-          isEphemeral: true,
-          ephemeralNotice: 'Only you can see this • Megachannel Rule Enforced',
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Linemaker', command: '/pro-claim', visibility: 'EPHEMERAL', isEphemeral: true, embed: embed.toJSON() };
         break;
       }
-
-      // PRODUCER
       case 'cast-tea': {
         const dramaScorers = [
           { star: 'Vanessa V.', archetype: 'The Chief Villain', dramaPoints: 142, spicyAction: 'Threw iced sangria into the infinity pool during the rose dinner.', fantasyCost: 45 },
-          { star: 'Tyler \'Bro\' Mac', archetype: 'The Gaslighter', dramaPoints: 98, spicyAction: 'Caught slipping DMs to the head producer.', fantasyCost: 35 },
-          { star: 'Chloe Belle', archetype: 'The Crying Confessionalist', dramaPoints: 84, spicyAction: 'Spent 18 consecutive minutes sobbing in the luxury yurt.', fantasyCost: 28 }
+          { star: 'Tyler \'Bro\' Mac', archetype: 'The Gaslighter', dramaPoints: 98, spicyAction: 'Caught slipping DMs to the head producer.', fantasyCost: 35 }
         ];
         const embed = buildCastTeaEmbed({ show: options.show || 'The Golden Rose', dramaLeaders: dramaScorers });
-        result = {
-          bot: 'Producer',
-          command: '/cast-tea',
-          visibility: 'PUBLIC',
-          isEphemeral: false,
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Producer', command: '/cast-tea', visibility: 'PUBLIC', isEphemeral: false, embed: embed.toJSON() };
         break;
       }
       case 'green-room': {
         const lockedCast = [
-          { star: 'Vanessa V.', role: 'Lead Antagonist', lockStatus: 'LOCKED', projectedDrama: 55, multiplier: '1.5x Captain' },
-          { star: 'Chloe Belle', role: 'Meltdown Specialist', lockStatus: 'LOCKED', projectedDrama: 40, multiplier: '1.0x' }
+          { star: 'Vanessa V.', role: 'Lead Antagonist', lockStatus: 'LOCKED', projectedDrama: 55, multiplier: '1.5x Captain' }
         ];
         const embed = buildGreenRoomEmbed({ user, show: options.show || 'The Golden Rose', lockedCast });
-        result = {
-          bot: 'Producer',
-          command: '/green-room',
-          visibility: 'EPHEMERAL',
-          isEphemeral: true,
-          ephemeralNotice: 'Only you can see this • Megachannel Rule Enforced',
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Producer', command: '/green-room', visibility: 'EPHEMERAL', isEphemeral: true, embed: embed.toJSON() };
         break;
       }
       case 'spill': {
         const rumors = [
-          'Anonymous sound engineer reports mic pack picked up Tyler secretly negotiating a post-season podcast deal in the pantry.',
-          'Producers forced a 3-hour retake of the hot tub fight after someone accidentally named a competing streaming service.',
-          'The finale ring was reportedly switched at the last second after a dramatic backstage walkout by the florist.'
+          'Anonymous sound engineer reports mic pack picked up Tyler secretly negotiating a post-season podcast deal in the pantry.'
         ];
-        const rumor = rumors[Math.floor(Math.random() * rumors.length)];
-        const embed = buildSpillEmbed({ show: options.show || 'The Golden Rose', rumor, dramaMeter: 94, source: 'Production Assistant Leak' });
-        result = {
-          bot: 'Producer',
-          command: '/spill',
-          visibility: 'PUBLIC',
-          isEphemeral: false,
-          embed: embed.toJSON()
-        };
+        const embed = buildSpillEmbed({ show: options.show || 'The Golden Rose', rumor: rumors[0], dramaMeter: 94, source: 'Production Assistant Leak' });
+        result = { bot: 'Producer', command: '/spill', visibility: 'PUBLIC', isEphemeral: false, embed: embed.toJSON() };
         break;
       }
       case 'eliminated': {
         const eliminatedStars = [
-          { star: 'Brett \'Pectorals\' Davis', archetype: 'The Fitness Influencer', exitQuote: 'My protein intake in this mansion was fundamentally compromised.', pointsEarned: 14 },
-          { star: 'Penelope St. Clair', archetype: 'The Socialite', exitQuote: 'None of these peasants have real generational trusts anyway.', pointsEarned: 19 }
+          { star: 'Brett \'Pectorals\' Davis', archetype: 'The Fitness Influencer', exitQuote: 'My protein intake in this mansion was fundamentally compromised.', pointsEarned: 14 }
         ];
         const embed = buildEliminatedEmbed({ show: options.show || 'The Golden Rose', week: 5, eliminatedStars });
-        result = {
-          bot: 'Producer',
-          command: '/eliminated',
-          visibility: 'PUBLIC',
-          isEphemeral: false,
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Producer', command: '/eliminated', visibility: 'PUBLIC', isEphemeral: false, embed: embed.toJSON() };
         break;
       }
-
-      // CONCIERGE
       case 'events': {
         const events = [
-          {
-            id: 'ev-1',
-            title: 'Sunday NFL RedZone Watch Party & Craft Cocktails',
-            dateStr: 'This Sunday • 12:30 PM - 8:00 PM EST',
-            location: 'Club 602 Sky Lounge (Screen 1 & 2)',
-            rsvpCount: 24,
-            capacity: 35,
-            details: 'Full sound on prime audio system, specialty smoked old fashioneds, and live ChainLink board tracking.'
-          },
-          {
-            id: 'ev-2',
-            title: 'The Golden Rose Reality Finale Watch & Live Roast',
-            dateStr: 'Wednesday • 7:30 PM EST',
-            location: 'Private Screening Room B',
-            rsvpCount: 16,
-            capacity: 20,
-            details: 'Champagne on tap, ScriptLess roster payouts, and live confessional microphone setup.'
-          }
+          { id: 'ev-1', title: 'Sunday NFL RedZone Watch Party & Craft Cocktails', dateStr: 'This Sunday • 12:30 PM - 8:00 PM EST', location: 'Club 602 Sky Lounge', rsvpCount: 24, capacity: 35 }
         ];
         const embed = buildConciergeEventsEmbed({ events });
-        result = {
-          bot: 'Concierge',
-          command: '/events',
-          visibility: 'PUBLIC',
-          isEphemeral: false,
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Concierge', command: '/events', visibility: 'PUBLIC', isEphemeral: false, embed: embed.toJSON() };
         break;
       }
       case 'rsvp': {
-        const eventTitle = options.event || 'Sunday NFL RedZone Watch Party & Craft Cocktails';
-        const guests = options.guests ?? 1;
-        const embed = buildRsvpConfirmationEmbed({ user, eventTitle, status: 'CONFIRMED ON VIP GUESTLIST', guests });
-        result = {
-          bot: 'Concierge',
-          command: '/rsvp',
-          visibility: 'EPHEMERAL',
-          isEphemeral: true,
-          ephemeralNotice: 'Only you can see this • Standalone Club 602 Server',
-          embed: embed.toJSON()
-        };
+        const embed = buildRsvpConfirmationEmbed({ user, eventTitle: 'Sunday NFL RedZone Watch Party', status: 'CONFIRMED ON VIP GUESTLIST', guests: 1 });
+        result = { bot: 'Concierge', command: '/rsvp', visibility: 'EPHEMERAL', isEphemeral: true, embed: embed.toJSON() };
         break;
       }
       case 'schedule': {
         const schedule = [
-          { day: 'Monday', event: 'Member Recovery Lounge', hours: '4:00 PM – 11:00 PM', perk: '2-for-1 Espresso Martinis & Monday Night Football' },
-          { day: 'Wednesday', event: 'ScriptLess Reality TV Screening Night', hours: '6:30 PM – Midnight', perk: 'Sparkling Rose specials & live drama pool' },
-          { day: 'Thursday', event: 'TNF Prime Showcase & Board Check', hours: '7:00 PM – Midnight', perk: 'ChainLink happy hour odds boost' },
           { day: 'Sunday', event: 'RedZone Marathon & Commissioner Court', hours: 'Noon – 11:00 PM', perk: 'Full buffet, 8 screens, fantasy dispute hearings' }
         ];
         const embed = buildScheduleEmbed({ schedule });
-        result = {
-          bot: 'Concierge',
-          command: '/schedule',
-          visibility: 'PUBLIC',
-          isEphemeral: false,
-          embed: embed.toJSON()
-        };
+        result = { bot: 'Concierge', command: '/schedule', visibility: 'PUBLIC', isEphemeral: false, embed: embed.toJSON() };
         break;
       }
-
       default:
         return res.status(400).json({ error: `Unknown command /${command}` });
     }
@@ -384,52 +414,7 @@ app.post('/api/simulate-command', async (req, res) => {
   }
 });
 
-// 4. Trigger Simulated Firestore onSnapshot Event
-app.post('/api/trigger-firebase-event', (req, res) => {
-  const { eventType, payload } = req.body;
-
-  if (db.__seed) {
-    switch (eventType) {
-      case 'action_board_shift':
-        db.__seed('action_board', 'active_games', payload || {
-          windows: [
-            { eventTitle: 'Chiefs vs 49ers', line: 'SF -3.5 (Moved from -2.5)', total: 'O/U 48.0', closesAt: new Date(Date.now() + 1000 * 60 * 30).toISOString(), poolSize: 34500, stuckCount: 0 }
-          ]
-        });
-        break;
-      case 'chop_block_update':
-        db.__seed('gridiron_exotics', 'chop_league', payload || {
-          chopBlock: [
-            { team: "Brad's Benchwarmers", manager: 'Brad_QNW', points: 68.4, gapToSafety: 16.6, dangerLevel: 'CRITICAL ELIMINATION RISK' }
-          ]
-        });
-        break;
-      case 'roster_lock_triggered':
-        db.__seed('scriptless', 'current_episode', payload || {
-          locked: true,
-          lockTime: new Date().toISOString()
-        });
-        break;
-      case 'calendar_event_added':
-        db.__seed('club602_calendar', 'ev_new', payload || {
-          title: 'Emergency VIP Tasting & Draft Session',
-          dateStr: 'Friday • 7:00 PM EST',
-          location: 'Private Humidor Room',
-          rsvpCount: 8,
-          capacity: 15
-        });
-        break;
-      default:
-        return res.status(400).json({ error: 'Unsupported eventType' });
-    }
-
-    return res.json({ success: true, message: `Dispatched ${eventType} into Firestore event stream.` });
-  }
-
-  res.json({ success: true, note: 'Trigger received (using live Firestore instance)' });
-});
-
-// 5. Deploy Slash Commands Trigger
+// Deploy Slash Commands Trigger
 app.post('/api/deploy-commands', async (req, res) => {
   try {
     const results = await deployAllCommands();
@@ -456,7 +441,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Control Center] Server listening at http://0.0.0.0:${PORT}`);
+    console.log(`[Controller App] Server listening at http://0.0.0.0:${PORT}`);
   });
 }
 

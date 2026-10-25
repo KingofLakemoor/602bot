@@ -22,7 +22,6 @@ export const client = new Client({
   ]
 });
 
-// In-memory cache synced strictly via Firebase onSnapshot
 let openWindows = [
   {
     eventTitle: 'Chiefs vs 49ers',
@@ -50,6 +49,7 @@ let openWindows = [
   }
 ];
 
+let isBoardFrozen = false;
 let userPortfolios = new Map();
 
 export async function initLinemaker() {
@@ -57,22 +57,21 @@ export async function initLinemaker() {
 
   // Firebase onSnapshot only: action_board & stuck_picks
   try {
-    const actionBoardCol = db.collection('action_board');
-    actionBoardCol.onSnapshot((snapshot) => {
-      console.log('[Linemaker] [onSnapshot] action_board event received.');
-      if (snapshot.docs && snapshot.docs.length > 0) {
-        const loaded = [];
-        snapshot.docs.forEach((doc) => {
-          const data = typeof doc.data === 'function' ? doc.data() : doc;
-          loaded.push(data);
-        });
-        openWindows = loaded;
+    const flagsDoc = db.collection('action_board').doc('control_flags');
+    flagsDoc.onSnapshot((docSnapshot) => {
+      const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
+      if (data) {
+        isBoardFrozen = Boolean(data.emergency_freeze);
+        if (isBoardFrozen) {
+          console.log(`[Linemaker] ⚡ [onSnapshot] EMERGENCY BOARD FREEZE ACTIVE! Triggered by Admin: ${data.frozenBy || 'Rick'}. Reason: ${data.reason || 'Manual Halt'}`);
+        } else {
+          console.log('[Linemaker] [onSnapshot] Action board control flags normal. Windows active.');
+        }
       }
-    }, (err) => console.error('[Linemaker] action_board snapshot error:', err));
+    }, (err) => console.error('[Linemaker] action_board control_flags error:', err));
 
     const stuckPicksCol = db.collection('stuck_picks');
     stuckPicksCol.onSnapshot((snapshot) => {
-      console.log('[Linemaker] [onSnapshot] stuck_picks listener triggered.');
       if (snapshot.docs && snapshot.docs.length > 0) {
         console.log(`[Linemaker] Alert: ${snapshot.docs.length} picks currently flagged as stuck in liquidity pool.`);
       }
@@ -91,7 +90,12 @@ export async function initLinemaker() {
       if (commandName === 'board') {
         // EPHEMERAL REPLY: Displays open ChainLink windows
         await interaction.deferReply({ ephemeral: true });
-        const embed = buildBoardEmbed({ windows: openWindows });
+
+        const displayWindows = isBoardFrozen
+          ? openWindows.map(w => ({ ...w, status: '⚠️ BOARD FROZEN BY ADMIN' }))
+          : openWindows;
+
+        const embed = buildBoardEmbed({ windows: displayWindows });
         await interaction.editReply({ embeds: [embed] });
       }
 
@@ -100,8 +104,8 @@ export async function initLinemaker() {
         await interaction.deferReply({ ephemeral: true });
 
         const mockPicks = [
-          { game: 'Chiefs vs 49ers', pick: '49ers -2.5', odds: '-110', wager: 100, toWin: 190.9, status: 'OPEN' },
-          { game: 'Eagles vs Cowboys', pick: 'Over 51.0', odds: '-105', wager: 50, toWin: 97.6, status: 'OPEN' }
+          { game: 'Chiefs vs 49ers', pick: '49ers -2.5', odds: '-110', wager: 100, toWin: 190.9, status: isBoardFrozen ? 'HELD IN ESCROW' : 'OPEN' },
+          { game: 'Eagles vs Cowboys', pick: 'Over 51.0', odds: '-105', wager: 50, toWin: 97.6, status: isBoardFrozen ? 'HELD IN ESCROW' : 'OPEN' }
         ];
 
         const embed = buildMyActionEmbed({

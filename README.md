@@ -1,133 +1,93 @@
-# Club 602 & QNW Bot Ecosystem — Raspberry Pi Deployment Guide
+# Club 602 & QNW Bot Ecosystem — Monorepo & Controller Specification
 
-A suite of four distinct Discord bots sharing a unified Node.js (v18+) codebase, deployed via Docker Compose to a Raspberry Pi with a shared Firebase Firestore backend and native Fantrax API polling.
-
----
-
-## 📂 Architecture Overview
-
-```
-/discord-bots-monorepo
-│
-├── /shared-utils
-│   ├── firebase-config.js      # Shared Firestore init & event listeners
-│   ├── fantrax-api.js          # Native fetch functions for Fantrax JSON endpoints
-│   └── message-builders.js     # Reusable Discord Embed functions
-│
-├── /bots
-│   ├── /commissioner           # QNW / Gridiron Exotics (Sports enforcer & trash-talker)
-│   ├── /linemaker              # ChainLink (Real-time betting board alerts)
-│   ├── /producer               # ScriptLess (Reality TV roster management)
-│   └── /concierge              # Club 602 (Standalone server hospitality & calendar)
-│
-├── deploy-commands.js          # REST API script to register slash commands
-├── docker-compose.yml          # Boots all 4 containers independently
-├── Dockerfile                  # Multi-arch alpine node container for Pi
-├── .env                        # Environment variables (Tokens, Guild IDs)
-└── package.json                # Shared dependencies
-```
+A unified repository containing four distinct Discord bots and a dedicated **React/Next.js Controller App** for Rick & Admins, deployed via Docker Compose to a Raspberry Pi with a shared Firebase Firestore backend.
 
 ---
 
-## 🚀 Raspberry Pi Quickstart (Step-by-Step)
+## 📂 Updated Monorepo Architecture
 
-### 1. Prerequisites on Raspberry Pi
-Ensure Docker and Docker Compose are installed on your Raspberry Pi:
-```bash
-# Update and install Docker
-curl -sSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-
-# Install Docker Compose plugin (if not already included)
-sudo apt-get install -y docker-compose-plugin
+```plaintext
+/602bot (GitHub Root)
+│
+├── /controller-app             <-- React Controller App Dashboard for Rick & Admins
+│   ├── /src/components         
+│   ├── Dockerfile              <-- Builds web dashboard on Port 3000
+│   └── package.json            <-- Web app dependencies
+│
+├── /discord-bots               <-- The 4-Bot Suite
+│   ├── /bots
+│   │   ├── /commissioner       # QNW Fantasy Enforcer (Sports enforcer & trash-talker)
+│   │   ├── /linemaker          # ChainLink Sportsbook (Real-time betting board alerts)
+│   │   ├── /producer           # ScriptLess (Reality TV roster management)
+│   │   └── /concierge          # Club 602 (Standalone server social & RSVP)
+│   │
+│   ├── /shared-utils           <-- Shared logic for bots AND the controller
+│   │   ├── firebase-config.js  # Shared Firestore init & event listeners
+│   │   ├── message-builders.js # Reusable Discord Embed functions
+│   │   └── fantrax-api.js      # Native fetch functions for Fantrax JSON endpoints
+│   │
+│   ├── deploy-commands.js      # Discord REST API script for slash command registration
+│   ├── Dockerfile              # Lightweight alpine node container for Pi
+│   └── package.json            # Bot dependencies (discord.js, node-cron)
+│
+├── docker-compose.yml          <-- Boots 5 containers (4 bots + 1 controller app)
+├── .env.example                # Template for Discord tokens, Guild IDs, and keys
+└── README.md                   <-- Developer Handoff Spec & Day 1 Checklist
 ```
 
-### 2. Clone or Copy Monorepo
-```bash
-mkdir -p ~/discord-bots-monorepo
-cd ~/discord-bots-monorepo
-# Transfer files or git clone here
-```
+---
 
-### 3. Configure Environment Variables
-Copy `.env.example` to `.env` and populate your Discord tokens and Guild IDs:
+## 📋 Day 1 Developer Checklist
+
+Copy this checklist into a GitHub Issue or your project tracker:
+
+- [x] **1. Scaffold the Monorepo**: Initialize `/discord-bots` and `/controller-app` directories with their respective `package.json` and Docker manifests.
+- [x] **2. Establish Firebase Connection**: Configure `/shared-utils/firebase-config.js` with Google Cloud Service Account credentials (`FIREBASE_SERVICE_ACCOUNT_PATH`) and zero-cost in-memory mock fallback for local dev.
+- [x] **3. Scaffold the Controller UI**: React dashboard locked to Admin users (Rick & Admins) displaying live health and telemetry of all 4 bots.
+- [x] **4. Build the Manual Overrides**: Firestore flag dispatchers in the controller app:
+  - 🪓 **Trigger Guillotine Drop**: Updates `gridiron_exotics/chop_league` (Commissioner `onSnapshot` alert).
+  - ⚡ **Emergency Line Freeze**: Updates `action_board/control_flags` (Linemaker `onSnapshot` halt).
+  - 🎬 **Emergency Roster Lock**: Updates `scriptless/current_episode` (Producer `onSnapshot` lockout).
+  - 🍸 **VIP Lounge Flash Announcement**: Updates `club602_calendar/announcements` (Concierge `onSnapshot`).
+  - 🚨 **Trigger Wall of Shame Audit**: Updates `gridiron_exotics/standings` (Instant Fantrax audit).
+- [x] **5. Test Local Docker Build**: Verify that `docker compose up` successfully boots 5 containers (4 bots + 1 controller app on port 3000).
+
+---
+
+## 🎯 The Controller App Strategy
+
+The Controller App operates as a **Firebase-Driven Dashboard**:
+* Instead of the web dashboard sending direct HTTP or WebSocket commands to each isolated bot container (which requires complex internal container routing and open ports), the Controller App simply updates specific Firestore documents.
+* Because all 4 bots subscribe via real-time `onSnapshot` listeners, changing a value in the Controller App triggers the bots in Discord **instantly** without additional network latency or cloud polling costs.
+
+---
+
+## 🚀 Raspberry Pi Docker Deployment (5 Containers)
+
+### 1. Configure `.env`
 ```bash
 cp .env.example .env
 nano .env
 ```
+Provide the required Discord tokens, `HUB_GUILD_ID`, `CLUB602_GUILD_ID`, and place `firebase-service-account.json` in the root.
 
-Variables required:
-* `COMMISSIONER_TOKEN` & `COMMISSIONER_CLIENT_ID`
-* `LINEMAKER_TOKEN` & `LINEMAKER_CLIENT_ID`
-* `PRODUCER_TOKEN` & `PRODUCER_CLIENT_ID`
-* `CONCIERGE_TOKEN` & `CONCIERGE_CLIENT_ID`
-* `HUB_GUILD_ID` (Merged server for Commissioner, Linemaker, Producer)
-* `CLUB602_GUILD_ID` (Standalone Club 602 server)
-* `FIREBASE_SERVICE_ACCOUNT_PATH` (`./firebase-service-account.json`)
-* `FANTRAX_LEAGUE_IDS` (e.g. `gridiron_exotics_2026`)
-
-Place your Firebase service account JSON key in the root directory:
+### 2. Deploy Slash Commands
 ```bash
-# Place your key at:
-~/discord-bots-monorepo/firebase-service-account.json
+node discord-bots/deploy-commands.js
 ```
 
-### 4. Deploy Slash Commands to Discord
-Run the deployment script once before or after starting containers:
-```bash
-npm install
-node deploy-commands.js
-```
-*(This uses the Discord REST API to register the commands to their respective Guilds instantly).*
-
-### 5. Launch with Docker Compose
+### 3. Launch with Docker Compose
 ```bash
 docker compose up -d --build
 ```
 
-Verify that all 4 containers are running:
+Verify all 5 services:
 ```bash
 docker compose ps
+# Output:
+# controller    Up (port 0.0.0.0:3000->3000)
+# commissioner  Up
+# linemaker     Up
+# producer      Up
+# concierge     Up
 ```
-
-Monitor live logs for any bot:
-```bash
-# View all logs
-docker compose logs -f
-
-# Or follow a specific persona
-docker compose logs -f commissioner
-docker compose logs -f linemaker
-docker compose logs -f producer
-docker compose logs -f concierge
-```
-
----
-
-## 🛡️ Slash Command Matrix & Privacy Rules
-
-The Commissioner, Linemaker, and Producer coexist in the unified **Hub Guild** without command collisions. Strict Ephemeral flags (`ephemeral: true`) prevent megachannel spam.
-
-| Bot | Command | Reply Visibility | Purpose |
-| :--- | :--- | :--- | :--- |
-| **Commissioner** | `/matchup` | **Public** | Pulls head-to-head records & Commissioner roasts |
-| **Commissioner** | `/shame` | **Public** | Audits rosters for injured/bye players via Fantrax |
-| **Commissioner** | `/guillotine-check` | **Public** | Checks current Chop league block & cut line |
-| **Linemaker** | `/board` | 🔒 **Ephemeral** | Displays open ChainLink windows & lines |
-| **Linemaker** | `/my-action` | 🔒 **Ephemeral** | Displays user's personal pending picks & slips |
-| **Linemaker** | `/pro-claim` | 🔒 **Ephemeral** | Claims daily login bonus & streak multiplier |
-| **Producer** | `/cast-tea` | **Public** | Shows top drama scorers & confessional metrics |
-| **Producer** | `/green-room` | 🔒 **Ephemeral** | Displays user's locked-in cast roster |
-| **Producer** | `/spill` | **Public** | Reality draft rumors & cutting-room intel |
-| **Producer** | `/eliminated` | **Public** | Reality stars sent home this week |
-| **Concierge** | `/events` | **Public** | Club 602 gatherings & private screenings |
-| **Concierge** | `/rsvp` | 🔒 **Ephemeral** | Private guestlist booking & confirmation |
-| **Concierge** | `/schedule` | **Public** | Weekly operating hours & member perks |
-
----
-
-## ⚡ Memory & Raspberry Pi Optimization
-* Base image: `node:20-alpine` (~180MB footprint).
-* Combined RAM usage for all 4 containers is approximately **180MB - 300MB**, leaving ample headroom on a Raspberry Pi 4 (2GB/4GB/8GB) or Pi 5.
-* Event-driven `onSnapshot` listeners eliminate expensive periodic polling for Firebase.
-* Fantrax API calls use native `fetch` with 8s timeouts and a scheduled `node-cron` frequency.

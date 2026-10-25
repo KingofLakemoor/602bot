@@ -1,26 +1,51 @@
 version: '3.8'
 
 services:
+  # 1. Controller App (React Admin Dashboard for Rick & Admins)
+  controller:
+    build:
+      context: .
+      dockerfile: controller-app/Dockerfile
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+
+  # 2. Bot 1: The Commissioner (QNW / Gridiron Exotics)
   commissioner:
-    build: .
+    build:
+      context: .
+      dockerfile: discord-bots/Dockerfile
     command: node bots/commissioner/index.js
     restart: unless-stopped
     env_file: .env
 
+  # 3. Bot 2: The Linemaker (ChainLink)
   linemaker:
-    build: .
+    build:
+      context: .
+      dockerfile: discord-bots/Dockerfile
     command: node bots/linemaker/index.js
     restart: unless-stopped
     env_file: .env
 
+  # 4. Bot 3: The Producer (ScriptLess)
   producer:
-    build: .
+    build:
+      context: .
+      dockerfile: discord-bots/Dockerfile
     command: node bots/producer/index.js
     restart: unless-stopped
     env_file: .env
 
+  # 5. Bot 4: The Concierge (Club 602 Standalone)
   concierge:
-    build: .
+    build:
+      context: .
+      dockerfile: discord-bots/Dockerfile
     command: node bots/concierge/index.js
     restart: unless-stopped
     env_file: .env

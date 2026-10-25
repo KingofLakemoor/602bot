@@ -21,7 +21,6 @@ export const client = new Client({
   ]
 });
 
-// State for Club 602 events and member RSVPs
 let clubEvents = [
   {
     id: 'ev-1',
@@ -61,28 +60,40 @@ let weeklySchedule = [
 ];
 
 let memberRsvps = new Map();
+let activeAdminAnnouncement = null;
 
 export async function initConcierge() {
   const db = getFirestoreDb();
 
-  // Firebase Calendar sync and RSVP tracking
+  // Firebase Calendar sync and RSVP tracking + Admin Announcements
   try {
+    const announcementDoc = db.collection('club602_calendar').doc('announcements');
+    announcementDoc.onSnapshot((docSnapshot) => {
+      const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
+      if (data) {
+        activeAdminAnnouncement = data;
+        if (data.activeAlert) {
+          console.log(`[Concierge] 🍸 [onSnapshot] VIP LOUNGE FLASH ANNOUNCEMENT: "${data.activeAlert}" (Dispatched by Rick & Admins)`);
+        }
+      }
+    }, (err) => console.error('[Concierge] Announcement snapshot error:', err));
+
     const calendarCol = db.collection('club602_calendar');
     calendarCol.onSnapshot((snapshot) => {
-      console.log('[Concierge] [onSnapshot] club602_calendar snapshot received.');
       if (snapshot.docs && snapshot.docs.length > 0) {
         const loaded = [];
         snapshot.docs.forEach((doc) => {
-          const data = typeof doc.data === 'function' ? doc.data() : doc;
-          loaded.push({ id: doc.id, ...data });
+          if (doc.id !== 'announcements') {
+            const data = typeof doc.data === 'function' ? doc.data() : doc;
+            loaded.push({ id: doc.id, ...data });
+          }
         });
-        clubEvents = loaded;
+        if (loaded.length > 0) clubEvents = loaded;
       }
     }, (err) => console.error('[Concierge] Calendar snapshot error:', err));
 
     const rsvpCol = db.collection('club602_rsvps');
     rsvpCol.onSnapshot((snapshot) => {
-      console.log('[Concierge] [onSnapshot] Member RSVP records synchronized.');
       if (snapshot.docs) {
         snapshot.docs.forEach((doc) => {
           const data = typeof doc.data === 'function' ? doc.data() : doc;
@@ -105,6 +116,13 @@ export async function initConcierge() {
         // PUBLIC REPLY: Lists upcoming club events and RSVP status
         await interaction.deferReply({ ephemeral: false });
         const embed = buildConciergeEventsEmbed({ events: clubEvents });
+        if (activeAdminAnnouncement?.activeAlert) {
+          embed.addFields({
+            name: '📢 VIP Concierge Announcement',
+            value: `*${activeAdminAnnouncement.activeAlert}*`,
+            inline: false
+          });
+        }
         await interaction.editReply({ embeds: [embed] });
       }
 

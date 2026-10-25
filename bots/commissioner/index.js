@@ -23,7 +23,7 @@ export const client = new Client({
 // Cache for real-time Firestore triggers
 let latestStandings = null;
 let latestChopBlock = [
-  { team: 'Brad\'s Benchwarmers', manager: 'Brad_QNW', points: 74.2, gapToSafety: 12.8, dangerLevel: 'EXTREME DANGER' },
+  { team: "Brad's Benchwarmers", manager: 'Brad_QNW', points: 74.2, gapToSafety: 12.8, dangerLevel: 'EXTREME RISK' },
   { team: 'The Guillotine Bait', manager: 'SleepyJoe', points: 79.5, gapToSafety: 7.5, dangerLevel: 'HIGH ALERT' },
   { team: 'Fourth & Twenty', manager: 'SmokeyP', points: 86.0, gapToSafety: 1.0, dangerLevel: 'SURVIVING BARELY' }
 ];
@@ -31,14 +31,20 @@ let latestChopBlock = [
 export async function initCommissioner() {
   const db = getFirestoreDb();
 
-  // 1. Firebase onSnapshot: Listen for Gridiron Exotics standings & chop league status
+  // 1. Firebase onSnapshot: Listen for Gridiron Exotics standings & chop league status (including manual overrides from Rick)
   try {
     const chopDoc = db.collection('gridiron_exotics').doc('chop_league');
     chopDoc.onSnapshot((docSnapshot) => {
       const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
-      if (data && data.chopBlock) {
-        latestChopBlock = data.chopBlock;
-        console.log('[Commissioner] [onSnapshot] Chop block updated from Firestore.');
+      if (data) {
+        if (data.chopBlock) latestChopBlock = data.chopBlock;
+
+        // Check if an Admin manual override dropped the blade!
+        if (data.guillotine_trigger && data.guillotine_trigger.status === 'DROPPED') {
+          console.log(`[Commissioner] 🪓 [onSnapshot] MANUAL OVERRIDE DETECTED! Blade dropped by Admin (${data.guillotine_trigger.droppedBy || 'Rick'}) on victim: ${data.guillotine_trigger.victim}`);
+        } else {
+          console.log('[Commissioner] [onSnapshot] Chop block updated from Firestore.');
+        }
       }
     }, (err) => console.error('[Commissioner] Firestore snapshot error:', err));
 
@@ -47,7 +53,11 @@ export async function initCommissioner() {
       const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
       if (data) {
         latestStandings = data;
-        console.log('[Commissioner] [onSnapshot] Standings updated from Firestore.');
+        if (data.shame_audit_requested) {
+          console.log('[Commissioner] 🚨 [onSnapshot] Manual Wall of Shame audit requested by Admin via Controller App!');
+        } else {
+          console.log('[Commissioner] [onSnapshot] Standings updated from Firestore.');
+        }
       }
     }, (err) => console.error('[Commissioner] Standings snapshot error:', err));
   } catch (err) {
@@ -55,7 +65,6 @@ export async function initCommissioner() {
   }
 
   // 2. Targeted node-cron schedule: Poll Fantrax on Sunday morning at 09:00 for illegal roster audits
-  // Also runs every hour during game days to catch late scratch emergencies
   cron.schedule('0 9 * * 0', async () => {
     console.log('[Commissioner] [node-cron] Running Sunday morning Fantrax roster audit...');
     try {

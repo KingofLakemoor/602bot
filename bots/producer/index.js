@@ -23,7 +23,6 @@ export const client = new Client({
   ]
 });
 
-// State
 let dramaScorers = [
   { star: 'Vanessa V.', archetype: 'The Chief Villain', dramaPoints: 142, spicyAction: 'Threw iced sangria into the infinity pool during the rose dinner.', fantasyCost: 45 },
   { star: 'Tyler \'Bro\' Mac', archetype: 'The Gaslighter', dramaPoints: 98, spicyAction: 'Caught slipping DMs to the head producer.', fantasyCost: 35 },
@@ -43,24 +42,32 @@ let producerRumors = [
   'Two contestants broke curfew to sneak into the editing bay to see who was getting the villain music cue.'
 ];
 
+let isRosterLocked = false;
+
 export async function initProducer() {
   const db = getFirestoreDb();
 
-  // 1. Firebase onSnapshot: Episode schedules, live scores & cast rosters
+  // 1. Firebase onSnapshot: Episode schedules, live scores & manual roster locks from Rick & Admins
   try {
     const episodeDoc = db.collection('scriptless').doc('current_episode');
     episodeDoc.onSnapshot((docSnapshot) => {
       const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
-      if (data && data.dramaScorers) {
-        dramaScorers = data.dramaScorers;
-        console.log('[Producer] [onSnapshot] ScriptLess drama scorers refreshed from Firestore.');
+      if (data) {
+        if (data.dramaLeaders) dramaScorers = data.dramaLeaders;
+
+        isRosterLocked = Boolean(data.emergency_lock);
+        if (isRosterLocked) {
+          console.log(`[Producer] 🎬 [onSnapshot] EMERGENCY ROSTER LOCK ACTIVE! Enforced by Admin: ${data.lockedBy || 'Rick'}. All cast trades rejected.`);
+        } else {
+          console.log('[Producer] [onSnapshot] ScriptLess episode status normal.');
+        }
       }
     }, (err) => console.error('[Producer] Firestore snapshot error:', err));
   } catch (err) {
     console.warn('[Producer] Firestore listener warning:', err.message);
   }
 
-  // 2. node-cron: Strict roster-lock alert 1 hour before airtime (e.g., Wednesdays at 19:00 for 20:00 show)
+  // 2. node-cron: Strict roster-lock alert 1 hour before airtime
   cron.schedule('0 19 * * 3', () => {
     console.log('[Producer] [node-cron] ROSTER LOCK WARNING! 60 minutes until tonight\'s episode airs!');
   });
@@ -85,9 +92,9 @@ export async function initProducer() {
         await interaction.deferReply({ ephemeral: true });
 
         const mockLockedCast = [
-          { star: 'Vanessa V.', role: 'Lead Antagonist', lockStatus: 'LOCKED', projectedDrama: 55, multiplier: '1.5x Captain' },
-          { star: 'Chloe Belle', role: 'Meltdown Specialist', lockStatus: 'LOCKED', projectedDrama: 40, multiplier: '1.0x' },
-          { star: 'Duke Kensington', role: 'Chaos Wildcard', lockStatus: 'LOCKED', projectedDrama: 25, multiplier: '1.0x' }
+          { star: 'Vanessa V.', role: 'Lead Antagonist', lockStatus: isRosterLocked ? '🔒 LOCKED (ADMIN HALT)' : 'LOCKED', projectedDrama: 55, multiplier: '1.5x Captain' },
+          { star: 'Chloe Belle', role: 'Meltdown Specialist', lockStatus: isRosterLocked ? '🔒 LOCKED (ADMIN HALT)' : 'LOCKED', projectedDrama: 40, multiplier: '1.0x' },
+          { star: 'Duke Kensington', role: 'Chaos Wildcard', lockStatus: isRosterLocked ? '🔒 LOCKED (ADMIN HALT)' : 'LOCKED', projectedDrama: 25, multiplier: '1.0x' }
         ];
 
         const embed = buildGreenRoomEmbed({

@@ -1,0 +1,19 @@
+{
+  "name": "602bot-controller-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Controller App Dashboard for Rick & Admins to monitor bots and trigger Firebase manual overrides",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build",
+    "start": "node server.ts"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "firebase-admin": "^13.6.1",
+    "lucide-react": "^0.546.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
