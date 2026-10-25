@@ -1,0 +1,6 @@
+{
+  "name": "Discord Calendar Bot",
+  "description": "Club 602 & QNW Discord Bot Ecosystem: The Commissioner, Linemaker, Producer, and Concierge with Docker monorepo, Firebase onSnapshot listeners, Fantrax API, and Raspberry Pi deployment.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

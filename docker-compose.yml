@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  commissioner:
+    build: .
+    command: node bots/commissioner/index.js
+    restart: unless-stopped
+    env_file: .env
+
+  linemaker:
+    build: .
+    command: node bots/linemaker/index.js
+    restart: unless-stopped
+    env_file: .env
+
+  producer:
+    build: .
+    command: node bots/producer/index.js
+    restart: unless-stopped
+    env_file: .env
+
+  concierge:
+    build: .
+    command: node bots/concierge/index.js
+    restart: unless-stopped
+    env_file: .env
