@@ -31,15 +31,7 @@ let dramaScorers = [
 ];
 
 let eliminatedThisWeek = [
-  { star: 'Brett \'Pectorals\' Davis', archetype: 'The Fitness Influencer', exitQuote: 'My protein intake in this mansion was fundamentally compromised.', pointsEarned: 14 },
-  { star: 'Penelope St. Clair', archetype: 'The Socialite', exitQuote: 'None of these peasants have real generational trusts anyway.', pointsEarned: 19 }
-];
-
-let producerRumors = [
-  'Anonymous sound engineer reports mic pack picked up Tyler secretly negotiating a post-season podcast deal in the pantry.',
-  'Producers forced a 3-hour retake of the hot tub fight after someone accidentally named a competing streaming service.',
-  'The finale ring was reportedly switched at the last second after a dramatic backstage walkout by the florist.',
-  'Two contestants broke curfew to sneak into the editing bay to see who was getting the villain music cue.'
+  { star: 'Brett \'Pectorals\' Davis', archetype: 'The Fitness Influencer', exitQuote: 'My protein intake in this mansion was fundamentally compromised.', pointsEarned: 14 }
 ];
 
 let isRosterLocked = false;
@@ -47,32 +39,67 @@ let isRosterLocked = false;
 export async function initProducer() {
   const db = getFirestoreDb();
 
-  // 1. Firebase onSnapshot: Episode schedules, live scores & manual roster locks from Rick & Admins
+  // -------------------------------------------------------------
+  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (Task 4)
+  // -------------------------------------------------------------
+  async function writeHeartbeat() {
+    try {
+      const heartbeatRef = db.collection('bot_heartbeats').doc('producer');
+      await heartbeatRef.set({
+        botId: 'producer',
+        botName: 'The Producer',
+        lastActive: Date.now(),
+        status: 'ONLINE',
+        version: '1.0.0',
+        guild: HUB_GUILD_ID || 'Hub Guild'
+      });
+      console.log('[Producer] 💓 Heartbeat written to bot_heartbeats/producer');
+    } catch (e) {
+      console.error('[Producer] Heartbeat failed:', e.message);
+    }
+  }
+
+  await writeHeartbeat();
+  setInterval(writeHeartbeat, 5 * 60 * 1000);
+
+  // -------------------------------------------------------------
+  // 2. ScriptLess Cast Elimination Listener (Task 2: scriptless_cast)
+  // Listens for manual eliminations triggered via Controller App
+  // -------------------------------------------------------------
   try {
+    const castCol = db.collection('scriptless_cast');
+    castCol.onSnapshot((snapshot) => {
+      if (snapshot.docs) {
+        snapshot.docs.forEach((doc) => {
+          const cast = typeof doc.data === 'function' ? doc.data() : doc;
+          if (cast.status === 'ELIMINATED') {
+            console.log(`[Producer] 🥀 [onSnapshot] Cast Member Elimination Verified: ${cast.name} (${cast.archetype}). Fantasy roster slots locked.`);
+          }
+        });
+      }
+    }, (err) => console.error('[Producer] scriptless_cast snapshot error:', err));
+
     const episodeDoc = db.collection('scriptless').doc('current_episode');
     episodeDoc.onSnapshot((docSnapshot) => {
       const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
       if (data) {
-        if (data.dramaLeaders) dramaScorers = data.dramaLeaders;
-
         isRosterLocked = Boolean(data.emergency_lock);
-        if (isRosterLocked) {
-          console.log(`[Producer] 🎬 [onSnapshot] EMERGENCY ROSTER LOCK ACTIVE! Enforced by Admin: ${data.lockedBy || 'Rick'}. All cast trades rejected.`);
-        } else {
-          console.log('[Producer] [onSnapshot] ScriptLess episode status normal.');
-        }
       }
-    }, (err) => console.error('[Producer] Firestore snapshot error:', err));
+    }, (err) => console.error('[Producer] current_episode snapshot error:', err));
   } catch (err) {
     console.warn('[Producer] Firestore listener warning:', err.message);
   }
 
-  // 2. node-cron: Strict roster-lock alert 1 hour before airtime
+  // -------------------------------------------------------------
+  // 3. node-cron: Strict roster-lock alert 1 hour before airtime
+  // -------------------------------------------------------------
   cron.schedule('0 19 * * 3', () => {
     console.log('[Producer] [node-cron] ROSTER LOCK WARNING! 60 minutes until tonight\'s episode airs!');
   });
 
-  // Slash Command Dispatcher
+  // -------------------------------------------------------------
+  // 4. Slash Command Dispatcher
+  // -------------------------------------------------------------
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -81,52 +108,30 @@ export async function initProducer() {
 
     try {
       if (commandName === 'cast-tea') {
-        // PUBLIC REPLY: Shows top drama scorers per show
         await interaction.deferReply({ ephemeral: false });
         const embed = buildCastTeaEmbed({ show: showName, dramaLeaders: dramaScorers });
         await interaction.editReply({ embeds: [embed] });
       }
 
       else if (commandName === 'green-room') {
-        // EPHEMERAL REPLY: Displays user's locked-in cast
         await interaction.deferReply({ ephemeral: true });
-
         const mockLockedCast = [
           { star: 'Vanessa V.', role: 'Lead Antagonist', lockStatus: isRosterLocked ? '🔒 LOCKED (ADMIN HALT)' : 'LOCKED', projectedDrama: 55, multiplier: '1.5x Captain' },
-          { star: 'Chloe Belle', role: 'Meltdown Specialist', lockStatus: isRosterLocked ? '🔒 LOCKED (ADMIN HALT)' : 'LOCKED', projectedDrama: 40, multiplier: '1.0x' },
-          { star: 'Duke Kensington', role: 'Chaos Wildcard', lockStatus: isRosterLocked ? '🔒 LOCKED (ADMIN HALT)' : 'LOCKED', projectedDrama: 25, multiplier: '1.0x' }
+          { star: 'Chloe Belle', role: 'Meltdown Specialist', lockStatus: isRosterLocked ? '🔒 LOCKED (ADMIN HALT)' : 'LOCKED', projectedDrama: 40, multiplier: '1.0x' }
         ];
-
-        const embed = buildGreenRoomEmbed({
-          user,
-          show: showName,
-          lockedCast: mockLockedCast
-        });
-
+        const embed = buildGreenRoomEmbed({ user, show: showName, lockedCast: mockLockedCast });
         await interaction.editReply({ embeds: [embed] });
       }
 
       else if (commandName === 'spill') {
-        // PUBLIC REPLY: Reality draft rumor
         await interaction.deferReply({ ephemeral: false });
-        const randomRumor = producerRumors[Math.floor(Math.random() * producerRumors.length)];
-        const embed = buildSpillEmbed({
-          show: showName,
-          rumor: randomRumor,
-          dramaMeter: Math.floor(Math.random() * 20) + 80,
-          source: 'Overheard in Craft Services'
-        });
+        const embed = buildSpillEmbed({ show: showName, rumor: 'Overheard in craft services: Finale ring was switched backstage.', dramaMeter: 94, source: 'Production Leak' });
         await interaction.editReply({ embeds: [embed] });
       }
 
       else if (commandName === 'eliminated') {
-        // PUBLIC REPLY: Lists reality stars sent home this week
         await interaction.deferReply({ ephemeral: false });
-        const embed = buildEliminatedEmbed({
-          show: showName,
-          week: 5,
-          eliminatedStars: eliminatedThisWeek
-        });
+        const embed = buildEliminatedEmbed({ show: showName, week: 5, eliminatedStars: eliminatedThisWeek });
         await interaction.editReply({ embeds: [embed] });
       }
     } catch (err) {

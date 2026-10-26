@@ -31,40 +31,81 @@ let latestChopBlock = [
 export async function initCommissioner() {
   const db = getFirestoreDb();
 
-  // 1. Firebase onSnapshot: Listen for Gridiron Exotics standings & chop league status (including manual overrides from Rick)
+  // -------------------------------------------------------------
+  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (Task 4)
+  // -------------------------------------------------------------
+  async function writeHeartbeat() {
+    try {
+      const heartbeatRef = db.collection('bot_heartbeats').doc('commissioner');
+      await heartbeatRef.set({
+        botId: 'commissioner',
+        botName: 'The Commissioner',
+        lastActive: Date.now(),
+        status: 'ONLINE',
+        version: '1.0.0',
+        guild: HUB_GUILD_ID || 'Hub Guild'
+      });
+      console.log('[Commissioner] 💓 Heartbeat written to bot_heartbeats/commissioner');
+    } catch (e) {
+      console.error('[Commissioner] Heartbeat failed:', e.message);
+    }
+  }
+
+  // Initial heartbeat + scheduled every 5 minutes
+  await writeHeartbeat();
+  setInterval(writeHeartbeat, 5 * 60 * 1000);
+
+  // -------------------------------------------------------------
+  // 2. The Firebase Listener Reset: Force Roster Audit (Task 2 & 3)
+  // Listens for forceAudit: true, executes audit, then resets flag
+  // -------------------------------------------------------------
   try {
+    const qnwFlagsRef = db.collection('system_flags').doc('qnw');
+    qnwFlagsRef.onSnapshot(async (docSnapshot) => {
+      const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
+      if (data && data.forceAudit === true) {
+        console.log('[Commissioner] 🚨 [onSnapshot] "Force Roster Audit" flag detected from Controller App!');
+        console.log('[Commissioner] Initiating Fantrax audit sweep...');
+        
+        try {
+          const violations = await auditRostersForShame(FANTRAX_LEAGUE_ID);
+          console.log(`[Commissioner] Audit finished: ${violations.length} manager violations identified.`);
+          
+          // TASK 3: CRITICAL RESET TO PREVENT INFINITE LOOP!
+          // The final line of code inside the listener resets the trigger document back to false
+          await qnwFlagsRef.update({
+            forceAudit: false,
+            lastAuditCompleted: Date.now(),
+            lastAuditSummary: `Audit completed: ${violations.length} violations found.`
+          });
+          console.log('[Commissioner] ✅ Successfully reset forceAudit to false. Infinite loop prevented.');
+        } catch (auditErr) {
+          console.error('[Commissioner] Audit error:', auditErr);
+          // Always ensure reset even on error
+          await qnwFlagsRef.update({
+            forceAudit: false,
+            lastAuditCompleted: Date.now(),
+            lastAuditSummary: `Audit error: ${auditErr.message}`
+          });
+        }
+      }
+    }, (err) => console.error('[Commissioner] system_flags snapshot error:', err));
+
+    // Standings & Chop block listeners
     const chopDoc = db.collection('gridiron_exotics').doc('chop_league');
     chopDoc.onSnapshot((docSnapshot) => {
       const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
-      if (data) {
-        if (data.chopBlock) latestChopBlock = data.chopBlock;
-
-        // Check if an Admin manual override dropped the blade!
-        if (data.guillotine_trigger && data.guillotine_trigger.status === 'DROPPED') {
-          console.log(`[Commissioner] 🪓 [onSnapshot] MANUAL OVERRIDE DETECTED! Blade dropped by Admin (${data.guillotine_trigger.droppedBy || 'Rick'}) on victim: ${data.guillotine_trigger.victim}`);
-        } else {
-          console.log('[Commissioner] [onSnapshot] Chop block updated from Firestore.');
-        }
+      if (data && data.chopBlock) {
+        latestChopBlock = data.chopBlock;
       }
-    }, (err) => console.error('[Commissioner] Firestore snapshot error:', err));
-
-    const standingsDoc = db.collection('gridiron_exotics').doc('standings');
-    standingsDoc.onSnapshot((docSnapshot) => {
-      const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
-      if (data) {
-        latestStandings = data;
-        if (data.shame_audit_requested) {
-          console.log('[Commissioner] 🚨 [onSnapshot] Manual Wall of Shame audit requested by Admin via Controller App!');
-        } else {
-          console.log('[Commissioner] [onSnapshot] Standings updated from Firestore.');
-        }
-      }
-    }, (err) => console.error('[Commissioner] Standings snapshot error:', err));
+    }, (err) => console.error('[Commissioner] chop_league snapshot error:', err));
   } catch (err) {
-    console.warn('[Commissioner] Firestore listener setup encountered warning:', err.message);
+    console.warn('[Commissioner] Firestore listener setup warning:', err.message);
   }
 
-  // 2. Targeted node-cron schedule: Poll Fantrax on Sunday morning at 09:00 for illegal roster audits
+  // -------------------------------------------------------------
+  // 3. Targeted node-cron schedule: Sunday morning audit
+  // -------------------------------------------------------------
   cron.schedule('0 9 * * 0', async () => {
     console.log('[Commissioner] [node-cron] Running Sunday morning Fantrax roster audit...');
     try {
@@ -77,7 +118,9 @@ export async function initCommissioner() {
     }
   });
 
-  // Slash Command Dispatcher
+  // -------------------------------------------------------------
+  // 4. Slash Command Dispatcher
+  // -------------------------------------------------------------
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -85,7 +128,6 @@ export async function initCommissioner() {
 
     try {
       if (commandName === 'matchup') {
-        // PUBLIC REPLY: Pulls head-to-head records and roasts
         await interaction.deferReply({ ephemeral: false });
         const data = await getLeagueMatchups(FANTRAX_LEAGUE_ID);
         const embed = buildMatchupEmbed({ matchups: data.matchups || [], week: data.week || 8 });
@@ -93,7 +135,6 @@ export async function initCommissioner() {
       }
 
       else if (commandName === 'shame') {
-        // PUBLIC REPLY: Audits rosters for injured/bye players
         await interaction.deferReply({ ephemeral: false });
         const violations = await auditRostersForShame(FANTRAX_LEAGUE_ID);
         const embed = buildShameEmbed({ violations });
@@ -101,7 +142,6 @@ export async function initCommissioner() {
       }
 
       else if (commandName === 'guillotine-check') {
-        // PUBLIC REPLY: Checks current Chop league block
         await interaction.deferReply({ ephemeral: false });
         const embed = buildGuillotineEmbed({ chopBlock: latestChopBlock, cutLineScore: 85.0 });
         await interaction.editReply({ embeds: [embed] });

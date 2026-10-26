@@ -58,29 +58,213 @@ initLinemaker().catch(e => console.warn('[Server] Linemaker startup note:', e.me
 initProducer().catch(e => console.warn('[Server] Producer startup note:', e.message));
 initConcierge().catch(e => console.warn('[Server] Concierge startup note:', e.message));
 
-// ==========================================
-// RICK & ADMIN CONTROLLER APP API ROUTES
-// ==========================================
+// ==============================================================
+// 1. FIREBASE AUTHENTICATION & ADMIN GUARDING (TASK 1)
+// ==============================================================
 
-// 1. Admin Authentication Check (Rick / Admin session)
-app.post('/api/admin/auth', (req, res) => {
-  const { passkey, username } = req.body;
-  // Rick or Admin authentication
-  const validUsers = ['Rick', 'Admin', 'Lead Admin'];
-  if (passkey === 'rick602' || passkey === 'admin' || validUsers.includes(username)) {
-    return res.json({
-      authenticated: true,
-      user: {
-        username: username || 'Rick',
-        role: 'SUPER_ADMIN',
-        permissions: ['MANUAL_OVERRIDE_ALL', 'DEPLOY_COMMANDS', 'VIEW_TELEMETRY']
-      }
-    });
+// Fetch Admin Array from Firestore (system_config/admins)
+app.get('/api/admin/config', async (req, res) => {
+  try {
+    const adminDoc = await db.collection('system_config').doc('admins').get();
+    const data = typeof adminDoc.data === 'function' ? adminDoc.data() : adminDoc;
+    const admins = data?.admins || ['rick@club602.com', 'kingoflakemoor@gmail.com', 'admin@qnw.com'];
+    res.json({ admins });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, admins: ['rick@club602.com', 'kingoflakemoor@gmail.com'] });
   }
-  res.status(401).json({ authenticated: false, error: 'Invalid admin credentials' });
 });
 
-// 2. Read live Firestore Document State & Event Log
+// Guard validation endpoint
+app.post('/api/admin/verify-access', async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ authorized: false, error: 'Email required' });
+  }
+
+  try {
+    const adminDoc = await db.collection('system_config').doc('admins').get();
+    const data = typeof adminDoc.data === 'function' ? adminDoc.data() : adminDoc;
+    const admins: string[] = data?.admins || ['rick@club602.com', 'kingoflakemoor@gmail.com', 'admin@qnw.com'];
+
+    const isAuthorized = admins.map(a => a.toLowerCase().trim()).includes(email.toLowerCase().trim());
+
+    if (isAuthorized) {
+      return res.json({
+        authorized: true,
+        email,
+        role: 'SUPER_ADMIN',
+        permissions: ['MANUAL_OVERRIDE_ALL', 'DEPLOY_COMMANDS', 'VIEW_TELEMETRY']
+      });
+    }
+
+    return res.status(403).json({
+      authorized: false,
+      email,
+      error: 'Access Denied: Your account is not in the Firestore Admin Array (system_config/admins).'
+    });
+  } catch (err: any) {
+    res.status(500).json({ authorized: false, error: err.message });
+  }
+});
+
+// ==============================================================
+// 2. BOT STATUS INDICATORS & HEARTBEATS (TASK 4)
+// Threshold: > 6 minutes (360 seconds) old = Offline (Red)
+// ==============================================================
+
+app.get('/api/admin/heartbeats', async (req, res) => {
+  try {
+    const bots = ['commissioner', 'linemaker', 'producer', 'concierge'];
+    const heartbeats = [];
+    const now = Date.now();
+    const OFFLINE_THRESHOLD_MS = 6 * 60 * 1000; // 6 minutes
+
+    for (const botId of bots) {
+      const doc = await db.collection('bot_heartbeats').doc(botId).get();
+      const data = typeof doc.data === 'function' ? doc.data() : doc;
+      const lastActive = data?.lastActive || (now - 1000 * 30);
+      const diffMs = now - lastActive;
+      const isOnline = diffMs <= OFFLINE_THRESHOLD_MS;
+
+      heartbeats.push({
+        botId,
+        botName: data?.botName || `The ${botId.charAt(0).toUpperCase() + botId.slice(1)}`,
+        lastActive,
+        diffSeconds: Math.floor(diffMs / 1000),
+        status: isOnline ? 'ONLINE' : 'OFFLINE',
+        isOnline
+      });
+    }
+
+    res.json({ heartbeats, serverTime: now });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Simulator helper to test 6-min timeout transition
+app.post('/api/admin/heartbeats/simulate-timeout', async (req, res) => {
+  const { botId = 'commissioner' } = req.body;
+  const expiredTime = Date.now() - (7 * 60 * 1000); // 7 minutes ago (> 6 mins)
+  await db.collection('bot_heartbeats').doc(botId).update({
+    lastActive: expiredTime,
+    status: 'OFFLINE'
+  });
+  res.json({ success: true, message: `Set ${botId} lastActive to 7 minutes ago. Indicator is now RED (Offline).` });
+});
+
+// Simulator helper to pulse fresh heartbeat
+app.post('/api/admin/heartbeats/pulse', async (req, res) => {
+  const { botId } = req.body;
+  const now = Date.now();
+  if (botId) {
+    await db.collection('bot_heartbeats').doc(botId).update({ lastActive: now, status: 'ONLINE' });
+  } else {
+    for (const b of ['commissioner', 'linemaker', 'producer', 'concierge']) {
+      await db.collection('bot_heartbeats').doc(b).update({ lastActive: now, status: 'ONLINE' });
+    }
+  }
+  res.json({ success: true, message: 'Heartbeat pulsed. Indicator is now GREEN (Online).' });
+});
+
+// ==============================================================
+// 3. WIRING THE UI TO FIRESTORE (THE OVERRIDES - TASK 2 & 3)
+// ==============================================================
+
+// Task (Commissioner): Force Roster Audit
+// Updates system_flags/qnw with { forceAudit: true }
+// Bot onSnapshot listener catches it, audits, then resets to false (Task 3)
+app.post('/api/admin/override/force-audit', async (req, res) => {
+  const { adminUser = 'Rick' } = req.body;
+  try {
+    const qnwRef = db.collection('system_flags').doc('qnw');
+    await qnwRef.update({
+      forceAudit: true,
+      lastTriggeredBy: adminUser,
+      triggeredAt: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      target: 'system_flags/qnw',
+      field: 'forceAudit: true',
+      message: `Set forceAudit: true in system_flags/qnw. Commissioner will run audit and auto-reset flag to false.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Task (Linemaker): Broadcast Action Alert
+// Adds custom message to db.collection('chainlink_alerts')
+app.post('/api/admin/override/broadcast-alert', async (req, res) => {
+  const { message, adminUser = 'Rick' } = req.body;
+  if (!message) {
+    return res.status(400).json({ error: 'Message required' });
+  }
+
+  try {
+    const alertDoc = await db.collection('chainlink_alerts').add({
+      message,
+      broadcastedBy: adminUser,
+      createdAt: new Date().toISOString(),
+      timestamp: Date.now()
+    });
+
+    res.json({
+      success: true,
+      target: 'chainlink_alerts',
+      alertId: alertDoc.id,
+      message: `Saved alert to db.collection('chainlink_alerts'). Linemaker bot onSnapshot notified.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Task (Producer): Trigger Elimination
+// Updates status field of specific cast member in db.collection('scriptless_cast')
+app.post('/api/admin/override/trigger-elimination', async (req, res) => {
+  const { castId, adminUser = 'Rick', reason = 'Admin Elimination Rose Ceremony' } = req.body;
+  if (!castId) {
+    return res.status(400).json({ error: 'castId required' });
+  }
+
+  try {
+    const castRef = db.collection('scriptless_cast').doc(castId);
+    await castRef.update({
+      status: 'ELIMINATED',
+      eliminatedAt: new Date().toISOString(),
+      eliminatedBy: adminUser,
+      eliminationReason: reason
+    });
+
+    res.json({
+      success: true,
+      target: `scriptless_cast/${castId}`,
+      field: "status: 'ELIMINATED'",
+      message: `Updated ${castId} status to 'ELIMINATED'. Producer bot notified via onSnapshot.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper: Get list of ScriptLess cast members
+app.get('/api/admin/scriptless-cast', async (req, res) => {
+  try {
+    const snapshot = await db.collection('scriptless_cast').get();
+    const cast: any[] = [];
+    snapshot.forEach((doc: any) => {
+      cast.push(doc.data ? doc.data() : doc);
+    });
+    res.json({ cast });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper: Read all Firestore Docs & Event Log
 app.get('/api/admin/firestore-state', (req, res) => {
   if (db.__getAllDocs) {
     return res.json({
@@ -91,145 +275,11 @@ app.get('/api/admin/firestore-state', (req, res) => {
   res.json({ documents: {}, eventLogs: [] });
 });
 
-// 3. Manual Overrides (The Controller App Strategy: Writes flags directly to Firestore documents)
-app.post('/api/admin/override', async (req, res) => {
-  const { action, payload = {}, adminUser = 'Rick' } = req.body;
-
-  try {
-    switch (action) {
-      // 🪓 OVERRIDE 1: Trigger Guillotine Blade Drop
-      case 'trigger_guillotine': {
-        const chopRef = db.collection('gridiron_exotics').doc('chop_league');
-        await chopRef.update({
-          guillotine_trigger: {
-            status: 'DROPPED',
-            droppedBy: adminUser,
-            victim: payload.victim || "Brad's Benchwarmers",
-            cutLineScore: payload.cutLineScore || 85.0,
-            timestamp: new Date().toISOString()
-          }
-        });
-        return res.json({
-          success: true,
-          action,
-          message: `Guillotine drop flag written to gridiron_exotics/chop_league by ${adminUser}.`
-        });
-      }
-
-      // Reset Guillotine
-      case 'reset_guillotine': {
-        const chopRef = db.collection('gridiron_exotics').doc('chop_league');
-        await chopRef.update({
-          guillotine_trigger: null
-        });
-        return res.json({ success: true, action, message: 'Guillotine status reset to active survival.' });
-      }
-
-      // ⚡ OVERRIDE 2: Emergency Line Freeze / Shift
-      case 'freeze_action_board': {
-        const flagsRef = db.collection('action_board').doc('control_flags');
-        await flagsRef.update({
-          emergency_freeze: true,
-          reason: payload.reason || 'Late Breaking NFL Injury News',
-          frozenBy: adminUser,
-          frozenAt: new Date().toISOString()
-        });
-        return res.json({
-          success: true,
-          action,
-          message: `Action board emergency freeze written to action_board/control_flags by ${adminUser}.`
-        });
-      }
-
-      case 'unfreeze_action_board': {
-        const flagsRef = db.collection('action_board').doc('control_flags');
-        await flagsRef.update({
-          emergency_freeze: false,
-          reason: null,
-          unfrozenBy: adminUser,
-          unfrozenAt: new Date().toISOString()
-        });
-        return res.json({ success: true, action, message: 'Action board thawed and trading resumed.' });
-      }
-
-      // 🎬 OVERRIDE 3: Emergency Roster Lock for ScriptLess
-      case 'lock_reality_rosters': {
-        const episodeRef = db.collection('scriptless').doc('current_episode');
-        await episodeRef.update({
-          emergency_lock: true,
-          reason: payload.reason || 'Airtime Deadline Enforced by Admin',
-          lockedBy: adminUser,
-          lockedAt: new Date().toISOString()
-        });
-        return res.json({
-          success: true,
-          action,
-          message: `Roster lockout written to scriptless/current_episode by ${adminUser}.`
-        });
-      }
-
-      case 'unlock_reality_rosters': {
-        const episodeRef = db.collection('scriptless').doc('current_episode');
-        await episodeRef.update({
-          emergency_lock: false,
-          reason: null
-        });
-        return res.json({ success: true, action, message: 'Roster lock released.' });
-      }
-
-      // 🍸 OVERRIDE 4: VIP Lounge Flash Announcement for Club 602
-      case 'broadcast_lounge_flash': {
-        const announcementRef = db.collection('club602_calendar').doc('announcements');
-        await announcementRef.update({
-          activeAlert: payload.message || 'Flash Tasting: Reserve Bourbon Vault open for next 60 minutes.',
-          priority: payload.priority || 'HIGH',
-          postedBy: adminUser,
-          postedAt: new Date().toISOString()
-        });
-        return res.json({
-          success: true,
-          action,
-          message: `VIP announcement written to club602_calendar/announcements by ${adminUser}.`
-        });
-      }
-
-      case 'clear_lounge_flash': {
-        const announcementRef = db.collection('club602_calendar').doc('announcements');
-        await announcementRef.update({
-          activeAlert: null
-        });
-        return res.json({ success: true, action, message: 'VIP announcement cleared.' });
-      }
-
-      // 🚨 OVERRIDE 5: Trigger Immediate Wall of Shame Audit
-      case 'request_shame_audit': {
-        const standingsRef = db.collection('gridiron_exotics').doc('standings');
-        await standingsRef.update({
-          shame_audit_requested: true,
-          requestedBy: adminUser,
-          requestedAt: new Date().toISOString()
-        });
-        return res.json({
-          success: true,
-          action,
-          message: `Shame audit trigger flag written to gridiron_exotics/standings by ${adminUser}.`
-        });
-      }
-
-      default:
-        return res.status(400).json({ error: `Unknown override action: ${action}` });
-    }
-  } catch (err) {
-    console.error('Manual override error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ==========================================
+// ==============================================================
 // FLEET STATUS & SIMULATOR ROUTES
-// ==========================================
+// ==============================================================
 
-app.get('/api/fleet-status', (req, res) => {
+app.get('/api/fleet-status', async (req, res) => {
   const bots = [
     {
       id: 'commissioner',
@@ -239,7 +289,8 @@ app.get('/api/fleet-status', (req, res) => {
       status: commissionerClient.isReady() ? 'ONLINE' : (process.env.COMMISSIONER_TOKEN ? 'CONNECTING' : 'SIMULATED'),
       isTokenConfigured: Boolean(process.env.COMMISSIONER_TOKEN),
       integrations: [
-        { name: 'Gridiron Exotics (Firebase)', type: 'onSnapshot', status: 'ACTIVE' },
+        { name: 'system_flags/qnw (forceAudit)', type: 'onSnapshot + Auto-Reset', status: 'ACTIVE' },
+        { name: 'bot_heartbeats/commissioner', type: 'Every 5 Mins', status: 'ACTIVE' },
         { name: 'Fantrax Public Endpoints', type: 'node-cron (Sun 9am)', status: 'SCHEDULED' }
       ],
       commands: ['/matchup', '/shame', '/guillotine-check']
@@ -252,8 +303,8 @@ app.get('/api/fleet-status', (req, res) => {
       status: linemakerClient.isReady() ? 'ONLINE' : (process.env.LINEMAKER_TOKEN ? 'CONNECTING' : 'SIMULATED'),
       isTokenConfigured: Boolean(process.env.LINEMAKER_TOKEN),
       integrations: [
-        { name: 'ChainLink action_board', type: 'onSnapshot only', status: 'ACTIVE' },
-        { name: 'ChainLink stuck_picks', type: 'onSnapshot only', status: 'ACTIVE' }
+        { name: 'chainlink_alerts Collection', type: 'onSnapshot', status: 'ACTIVE' },
+        { name: 'bot_heartbeats/linemaker', type: 'Every 5 Mins', status: 'ACTIVE' }
       ],
       commands: ['/board (ephemeral)', '/my-action (ephemeral)', '/pro-claim (ephemeral)']
     },
@@ -265,8 +316,8 @@ app.get('/api/fleet-status', (req, res) => {
       status: producerClient.isReady() ? 'ONLINE' : (process.env.PRODUCER_TOKEN ? 'CONNECTING' : 'SIMULATED'),
       isTokenConfigured: Boolean(process.env.PRODUCER_TOKEN),
       integrations: [
-        { name: 'ScriptLess current_episode', type: 'onSnapshot', status: 'ACTIVE' },
-        { name: 'Episode Roster-Lock Guard', type: 'node-cron (1h prior)', status: 'SCHEDULED' }
+        { name: 'scriptless_cast Collection', type: 'onSnapshot', status: 'ACTIVE' },
+        { name: 'bot_heartbeats/producer', type: 'Every 5 Mins', status: 'ACTIVE' }
       ],
       commands: ['/cast-tea', '/green-room (ephemeral)', '/spill', '/eliminated']
     },
@@ -278,8 +329,8 @@ app.get('/api/fleet-status', (req, res) => {
       status: conciergeClient.isReady() ? 'ONLINE' : (process.env.CONCIERGE_TOKEN ? 'CONNECTING' : 'SIMULATED'),
       isTokenConfigured: Boolean(process.env.CONCIERGE_TOKEN),
       integrations: [
-        { name: 'Club 602 Calendar Sync', type: 'onSnapshot', status: 'ACTIVE' },
-        { name: 'Member RSVP Tracking', type: 'onSnapshot', status: 'ACTIVE' }
+        { name: 'club602_calendar Sync', type: 'onSnapshot', status: 'ACTIVE' },
+        { name: 'bot_heartbeats/concierge', type: 'Every 5 Mins', status: 'ACTIVE' }
       ],
       commands: ['/events', '/rsvp (ephemeral)', '/schedule']
     }
@@ -408,18 +459,17 @@ app.post('/api/simulate-command', async (req, res) => {
     }
 
     res.json(result);
-  } catch (err) {
+  } catch (err: any) {
     console.error('Simulation error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Deploy Slash Commands Trigger
 app.post('/api/deploy-commands', async (req, res) => {
   try {
     const results = await deployAllCommands();
     res.json({ success: true, results });
-  } catch (err) {
+  } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
 });

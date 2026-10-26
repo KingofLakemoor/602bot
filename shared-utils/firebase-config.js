@@ -52,12 +52,116 @@ export function getFirestoreDb() {
 }
 
 /**
- * In-memory Mock Firestore to ensure bot containers don't crash before service account is injected.
- * Implements collection, doc, onSnapshot, get, set, update, and real-time state introspection for Rick & Admins.
+ * In-memory Mock Firestore to ensure bot containers and controller app don't crash.
+ * Implements collection, doc, onSnapshot, get, set, update, add, and real-time state introspection.
  */
 function createMockFirestore() {
+  const now = Date.now();
+
   // Pre-seed realistic collections for Day 1
   if (mockStore.size === 0) {
+    // 1. Admin Array for Auth Guarding
+    mockStore.set('system_config/admins', {
+      admins: [
+        'rick@club602.com',
+        'kingoflakemoor@gmail.com',
+        'admin@qnw.com'
+      ],
+      updatedAt: new Date().toISOString()
+    });
+
+    // 2. System Flags (Commissioner Force Roster Audit & Auto-Reset)
+    mockStore.set('system_flags/qnw', {
+      forceAudit: false,
+      lastAuditCompleted: now - 1000 * 60 * 15,
+      lastAuditSummary: 'Routine audit clear. 0 violations found.',
+      lastTriggeredBy: null,
+      lastUpdated: new Date().toISOString()
+    });
+
+    // 3. ChainLink Action Alerts Collection (Linemaker)
+    mockStore.set('chainlink_alerts/alert_init_1', {
+      id: 'alert_init_1',
+      message: '🚨 Sharp action on 49ers -2.5. Line moved to -3.5. Liquidity window closing.',
+      broadcastedBy: 'System Engine',
+      createdAt: new Date(now - 1000 * 60 * 30).toISOString(),
+      timestamp: now - 1000 * 60 * 30
+    });
+
+    // 4. ScriptLess Cast Collection (Producer Reality TV Eliminations)
+    mockStore.set('scriptless_cast/vanessa_v', {
+      id: 'vanessa_v',
+      name: 'Vanessa V.',
+      archetype: 'The Chief Villain',
+      status: 'ACTIVE',
+      dramaPoints: 142,
+      lastUpdated: new Date().toISOString()
+    });
+    mockStore.set('scriptless_cast/tyler_mac', {
+      id: 'tyler_mac',
+      name: 'Tyler "Bro" Mac',
+      archetype: 'The Gaslighter',
+      status: 'ACTIVE',
+      dramaPoints: 98,
+      lastUpdated: new Date().toISOString()
+    });
+    mockStore.set('scriptless_cast/chloe_belle', {
+      id: 'chloe_belle',
+      name: 'Chloe Belle',
+      archetype: 'The Crying Confessionalist',
+      status: 'ACTIVE',
+      dramaPoints: 84,
+      lastUpdated: new Date().toISOString()
+    });
+    mockStore.set('scriptless_cast/duke_kensington', {
+      id: 'duke_kensington',
+      name: 'Duke Kensington',
+      archetype: 'The Wealth Flexer',
+      status: 'ACTIVE',
+      dramaPoints: 62,
+      lastUpdated: new Date().toISOString()
+    });
+    mockStore.set('scriptless_cast/brett_davis', {
+      id: 'brett_davis',
+      name: 'Brett "Pectorals" Davis',
+      archetype: 'The Fitness Influencer',
+      status: 'ELIMINATED',
+      eliminatedAt: 'Episode 5 Ceremony',
+      dramaPoints: 34,
+      lastUpdated: new Date().toISOString()
+    });
+
+    // 5. Bot Heartbeats (4 Bots, updated every 5 mins, red if > 6 mins)
+    mockStore.set('bot_heartbeats/commissioner', {
+      botId: 'commissioner',
+      botName: 'The Commissioner',
+      lastActive: now - 1000 * 25, // 25s ago (Online)
+      version: '1.0.0',
+      status: 'ONLINE'
+    });
+    mockStore.set('bot_heartbeats/linemaker', {
+      botId: 'linemaker',
+      botName: 'The Linemaker',
+      lastActive: now - 1000 * 45, // 45s ago (Online)
+      version: '1.0.0',
+      status: 'ONLINE'
+    });
+    mockStore.set('bot_heartbeats/producer', {
+      botId: 'producer',
+      botName: 'The Producer',
+      lastActive: now - 1000 * 60, // 60s ago (Online)
+      version: '1.0.0',
+      status: 'ONLINE'
+    });
+    mockStore.set('bot_heartbeats/concierge', {
+      botId: 'concierge',
+      botName: 'The Concierge',
+      lastActive: now - 1000 * 30, // 30s ago (Online)
+      version: '1.0.0',
+      status: 'ONLINE'
+    });
+
+    // 6. Additional Guild / League docs
     mockStore.set('gridiron_exotics/chop_league', {
       leagueName: 'Gridiron Exotics Guillotine',
       cutLineScore: 85.0,
@@ -67,33 +171,6 @@ function createMockFirestore() {
         { team: 'Fourth & Twenty', manager: 'SmokeyP', points: 86.0, gapToSafety: 1.0, dangerLevel: 'SURVIVING BARELY' }
       ],
       guillotine_trigger: null,
-      lastUpdated: new Date().toISOString()
-    });
-
-    mockStore.set('action_board/control_flags', {
-      emergency_freeze: false,
-      activeWindowsCount: 3,
-      liquidityAlertThreshold: 50000,
-      reason: null,
-      lastUpdated: new Date().toISOString()
-    });
-
-    mockStore.set('scriptless/current_episode', {
-      show: 'The Golden Rose',
-      episodeNumber: 5,
-      airTime: 'Wednesday 20:00 EST',
-      emergency_lock: false,
-      dramaLeaders: [
-        { star: 'Vanessa V.', archetype: 'The Chief Villain', dramaPoints: 142, spicyAction: 'Threw iced sangria into the infinity pool during the rose dinner.' },
-        { star: 'Tyler "Bro" Mac', archetype: 'The Gaslighter', dramaPoints: 98, spicyAction: 'Caught slipping DMs to the head producer.' }
-      ],
-      lastUpdated: new Date().toISOString()
-    });
-
-    mockStore.set('club602_calendar/announcements', {
-      bannerText: 'Sunday NFL RedZone Watch Party & Craft Cocktails - Doors open 12:30 PM EST',
-      activeAlert: null,
-      priority: 'NORMAL',
       lastUpdated: new Date().toISOString()
     });
   }
@@ -132,7 +209,6 @@ function createMockFirestore() {
               if (!mockListeners.has(listenerKey)) mockListeners.set(listenerKey, new Set());
               mockListeners.get(listenerKey).add(callback);
 
-              // Initial emission
               const current = mockStore.get(key) || null;
               callback({
                 exists: current !== null,
@@ -145,6 +221,30 @@ function createMockFirestore() {
                 if (set) set.delete(callback);
               };
             }
+          };
+        },
+        async add(data) {
+          const docId = data.id || `doc_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+          const key = `${colName}/${docId}`;
+          const fullData = { id: docId, ...data, createdAt: data.createdAt || new Date().toISOString() };
+          mockStore.set(key, fullData);
+          logEvent(colName, docId, 'ADD', fullData);
+          notify(colName, docId, fullData);
+          return { id: docId, writeTime: new Date() };
+        },
+        async get() {
+          const docs = [];
+          for (const [k, v] of mockStore.entries()) {
+            if (k.startsWith(`${colName}/`)) {
+              const id = k.split('/')[1];
+              docs.push({ id, data: () => v, exists: true });
+            }
+          }
+          return {
+            docs,
+            size: docs.length,
+            empty: docs.length === 0,
+            forEach: (fn) => docs.forEach(fn)
           };
         },
         onSnapshot(callback, errCallback) {
@@ -177,7 +277,6 @@ function createMockFirestore() {
         }
       };
     },
-    // Seed & Introspection helpers for Controller App
     __seed(colName, docId, data) {
       const key = `${colName}/${docId}`;
       mockStore.set(key, data);
@@ -204,7 +303,7 @@ function createMockFirestore() {
       payload,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     });
-    if (eventLog.length > 50) eventLog.shift();
+    if (eventLog.length > 60) eventLog.shift();
   }
 
   function notify(colName, docId, data) {
@@ -214,7 +313,7 @@ function createMockFirestore() {
         try {
           cb({ exists: true, id: docId, data: () => data });
         } catch (e) {
-          console.error('[MockFirestore] Listener error:', e);
+          console.error('[MockFirestore] Doc Listener error:', e);
         }
       });
     }
@@ -237,7 +336,7 @@ function createMockFirestore() {
         try {
           cb(snapshot);
         } catch (e) {
-          console.error('[MockFirestore] Collection listener error:', e);
+          console.error('[MockFirestore] Col Listener error:', e);
         }
       });
     }

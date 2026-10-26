@@ -55,32 +55,65 @@ let userPortfolios = new Map();
 export async function initLinemaker() {
   const db = getFirestoreDb();
 
-  // Firebase onSnapshot only: action_board & stuck_picks
+  // -------------------------------------------------------------
+  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (Task 4)
+  // -------------------------------------------------------------
+  async function writeHeartbeat() {
+    try {
+      const heartbeatRef = db.collection('bot_heartbeats').doc('linemaker');
+      await heartbeatRef.set({
+        botId: 'linemaker',
+        botName: 'The Linemaker',
+        lastActive: Date.now(),
+        status: 'ONLINE',
+        version: '1.0.0',
+        guild: HUB_GUILD_ID || 'Hub Guild'
+      });
+      console.log('[Linemaker] 💓 Heartbeat written to bot_heartbeats/linemaker');
+    } catch (e) {
+      console.error('[Linemaker] Heartbeat failed:', e.message);
+    }
+  }
+
+  await writeHeartbeat();
+  setInterval(writeHeartbeat, 5 * 60 * 1000);
+
+  // -------------------------------------------------------------
+  // 2. ChainLink Action Alerts (Task 2: db.collection('chainlink_alerts'))
+  // Listens for manual broadcast alerts dispatched by Controller App
+  // -------------------------------------------------------------
   try {
+    const alertsCol = db.collection('chainlink_alerts');
+    alertsCol.onSnapshot((snapshot) => {
+      if (snapshot.docs && snapshot.docs.length > 0) {
+        // Read latest alert
+        const docs = snapshot.docs;
+        const latestDoc = docs[docs.length - 1];
+        const data = typeof latestDoc.data === 'function' ? latestDoc.data() : latestDoc;
+        if (data && data.message) {
+          console.log(`[Linemaker] 📢 [onSnapshot] Action Alert detected from Controller App: "${data.message}" (Broadcasted by: ${data.broadcastedBy || 'Admin'})`);
+        }
+      }
+    }, (err) => console.error('[Linemaker] chainlink_alerts snapshot error:', err));
+
+    // Control flags listener (emergency freeze)
     const flagsDoc = db.collection('action_board').doc('control_flags');
     flagsDoc.onSnapshot((docSnapshot) => {
       const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
       if (data) {
         isBoardFrozen = Boolean(data.emergency_freeze);
         if (isBoardFrozen) {
-          console.log(`[Linemaker] ⚡ [onSnapshot] EMERGENCY BOARD FREEZE ACTIVE! Triggered by Admin: ${data.frozenBy || 'Rick'}. Reason: ${data.reason || 'Manual Halt'}`);
-        } else {
-          console.log('[Linemaker] [onSnapshot] Action board control flags normal. Windows active.');
+          console.log(`[Linemaker] ⚡ [onSnapshot] EMERGENCY BOARD FREEZE ACTIVE! Reason: ${data.reason || 'Manual Halt'}`);
         }
       }
     }, (err) => console.error('[Linemaker] action_board control_flags error:', err));
-
-    const stuckPicksCol = db.collection('stuck_picks');
-    stuckPicksCol.onSnapshot((snapshot) => {
-      if (snapshot.docs && snapshot.docs.length > 0) {
-        console.log(`[Linemaker] Alert: ${snapshot.docs.length} picks currently flagged as stuck in liquidity pool.`);
-      }
-    }, (err) => console.error('[Linemaker] stuck_picks snapshot error:', err));
   } catch (err) {
     console.warn('[Linemaker] Firestore snapshot listener warning:', err.message);
   }
 
-  // Slash Command Dispatcher (Strict Ephemeral Replies for all Linemaker commands)
+  // -------------------------------------------------------------
+  // 3. Slash Command Dispatcher (Strict Ephemeral Replies)
+  // -------------------------------------------------------------
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -88,7 +121,6 @@ export async function initLinemaker() {
 
     try {
       if (commandName === 'board') {
-        // EPHEMERAL REPLY: Displays open ChainLink windows
         await interaction.deferReply({ ephemeral: true });
 
         const displayWindows = isBoardFrozen
@@ -100,12 +132,10 @@ export async function initLinemaker() {
       }
 
       else if (commandName === 'my-action') {
-        // EPHEMERAL REPLY: Displays user's pending picks
         await interaction.deferReply({ ephemeral: true });
 
         const mockPicks = [
-          { game: 'Chiefs vs 49ers', pick: '49ers -2.5', odds: '-110', wager: 100, toWin: 190.9, status: isBoardFrozen ? 'HELD IN ESCROW' : 'OPEN' },
-          { game: 'Eagles vs Cowboys', pick: 'Over 51.0', odds: '-105', wager: 50, toWin: 97.6, status: isBoardFrozen ? 'HELD IN ESCROW' : 'OPEN' }
+          { game: 'Chiefs vs 49ers', pick: '49ers -2.5', odds: '-110', wager: 100, toWin: 190.9, status: isBoardFrozen ? 'HELD IN ESCROW' : 'OPEN' }
         ];
 
         const embed = buildMyActionEmbed({
@@ -118,7 +148,6 @@ export async function initLinemaker() {
       }
 
       else if (commandName === 'pro-claim') {
-        // EPHEMERAL REPLY: Claims daily login bonus
         await interaction.deferReply({ ephemeral: true });
 
         const previousClaim = userPortfolios.get(user.id);

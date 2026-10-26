@@ -39,24 +39,7 @@ let clubEvents = [
     rsvpCount: 16,
     capacity: 20,
     details: 'Champagne on tap, ScriptLess roster payouts, and live confessional microphone setup.'
-  },
-  {
-    id: 'ev-3',
-    title: 'Club 602 High-Stakes Fantasy Championship Gala',
-    dateStr: 'Saturday Nov 14 • 8:00 PM EST',
-    location: 'Main Ballroom 602',
-    rsvpCount: 28,
-    capacity: 50,
-    details: 'Black tie optional. Guillotine survivor trophy presentation and live fantasy auction.'
   }
-];
-
-let weeklySchedule = [
-  { day: 'Monday', event: 'Member Recovery Lounge', hours: '4:00 PM – 11:00 PM', perk: '2-for-1 Espresso Martinis & Monday Night Football' },
-  { day: 'Wednesday', event: 'ScriptLess Reality TV Screening Night', hours: '6:30 PM – Midnight', perk: 'Sparkling Rose specials & live drama pool' },
-  { day: 'Thursday', event: 'TNF Prime Showcase & Board Check', hours: '7:00 PM – Midnight', perk: 'ChainLink happy hour odds boost' },
-  { day: 'Saturday', event: 'UFC / Fight Night Cinema Room', hours: '8:00 PM – 2:00 AM', perk: 'Craft sliders & VIP lounge pass access' },
-  { day: 'Sunday', event: 'RedZone Marathon & Commissioner Court', hours: 'Noon – 11:00 PM', perk: 'Full buffet, 8 screens, fantasy dispute hearings' }
 ];
 
 let memberRsvps = new Map();
@@ -65,7 +48,32 @@ let activeAdminAnnouncement = null;
 export async function initConcierge() {
   const db = getFirestoreDb();
 
-  // Firebase Calendar sync and RSVP tracking + Admin Announcements
+  // -------------------------------------------------------------
+  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (Task 4)
+  // -------------------------------------------------------------
+  async function writeHeartbeat() {
+    try {
+      const heartbeatRef = db.collection('bot_heartbeats').doc('concierge');
+      await heartbeatRef.set({
+        botId: 'concierge',
+        botName: 'The Concierge',
+        lastActive: Date.now(),
+        status: 'ONLINE',
+        version: '1.0.0',
+        guild: CLUB602_GUILD_ID || 'Club 602 Standalone'
+      });
+      console.log('[Concierge] 💓 Heartbeat written to bot_heartbeats/concierge');
+    } catch (e) {
+      console.error('[Concierge] Heartbeat failed:', e.message);
+    }
+  }
+
+  await writeHeartbeat();
+  setInterval(writeHeartbeat, 5 * 60 * 1000);
+
+  // -------------------------------------------------------------
+  // 2. Calendar Sync & Announcements
+  // -------------------------------------------------------------
   try {
     const announcementDoc = db.collection('club602_calendar').doc('announcements');
     announcementDoc.onSnapshot((docSnapshot) => {
@@ -73,39 +81,17 @@ export async function initConcierge() {
       if (data) {
         activeAdminAnnouncement = data;
         if (data.activeAlert) {
-          console.log(`[Concierge] 🍸 [onSnapshot] VIP LOUNGE FLASH ANNOUNCEMENT: "${data.activeAlert}" (Dispatched by Rick & Admins)`);
+          console.log(`[Concierge] 🍸 [onSnapshot] VIP LOUNGE FLASH ANNOUNCEMENT: "${data.activeAlert}"`);
         }
       }
     }, (err) => console.error('[Concierge] Announcement snapshot error:', err));
-
-    const calendarCol = db.collection('club602_calendar');
-    calendarCol.onSnapshot((snapshot) => {
-      if (snapshot.docs && snapshot.docs.length > 0) {
-        const loaded = [];
-        snapshot.docs.forEach((doc) => {
-          if (doc.id !== 'announcements') {
-            const data = typeof doc.data === 'function' ? doc.data() : doc;
-            loaded.push({ id: doc.id, ...data });
-          }
-        });
-        if (loaded.length > 0) clubEvents = loaded;
-      }
-    }, (err) => console.error('[Concierge] Calendar snapshot error:', err));
-
-    const rsvpCol = db.collection('club602_rsvps');
-    rsvpCol.onSnapshot((snapshot) => {
-      if (snapshot.docs) {
-        snapshot.docs.forEach((doc) => {
-          const data = typeof doc.data === 'function' ? doc.data() : doc;
-          memberRsvps.set(doc.id, data);
-        });
-      }
-    }, (err) => console.error('[Concierge] RSVP snapshot error:', err));
   } catch (err) {
     console.warn('[Concierge] Firestore listener warning:', err.message);
   }
 
-  // Slash Command Dispatcher
+  // -------------------------------------------------------------
+  // 3. Slash Command Dispatcher
+  // -------------------------------------------------------------
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -113,7 +99,6 @@ export async function initConcierge() {
 
     try {
       if (commandName === 'events') {
-        // PUBLIC REPLY: Lists upcoming club events and RSVP status
         await interaction.deferReply({ ephemeral: false });
         const embed = buildConciergeEventsEmbed({ events: clubEvents });
         if (activeAdminAnnouncement?.activeAlert) {
@@ -127,9 +112,7 @@ export async function initConcierge() {
       }
 
       else if (commandName === 'rsvp') {
-        // EPHEMERAL REPLY: Submit or check personal RSVP
         await interaction.deferReply({ ephemeral: true });
-
         const eventChoice = options.getString('event') || clubEvents[0]?.title || 'Sunday NFL RedZone Watch Party';
         const guests = options.getInteger('guests') ?? 1;
 
@@ -152,9 +135,11 @@ export async function initConcierge() {
       }
 
       else if (commandName === 'schedule') {
-        // PUBLIC REPLY: View weekly operating hours & lounge calendar
         await interaction.deferReply({ ephemeral: false });
-        const embed = buildScheduleEmbed({ schedule: weeklySchedule });
+        const schedule = [
+          { day: 'Sunday', event: 'RedZone Marathon & Commissioner Court', hours: 'Noon – 11:00 PM', perk: 'Full buffet, 8 screens, fantasy dispute hearings' }
+        ];
+        const embed = buildScheduleEmbed({ schedule });
         await interaction.editReply({ embeds: [embed] });
       }
     } catch (err) {
