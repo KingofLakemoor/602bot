@@ -10,7 +10,12 @@ dotenv.config();
 export const commissionerCommands = [
   new SlashCommandBuilder()
     .setName('matchup')
-    .setDescription('Pulls head-to-head records and unfiltered Commissioner roasts'),
+    .setDescription('Pulls head-to-head records and unfiltered Commissioner roasts')
+    .addUserOption(option =>
+      option.setName('user')
+        .setDescription('Target user to view matchup against')
+        .setRequired(false)
+    ),
   new SlashCommandBuilder()
     .setName('shame')
     .setDescription('Audits Fantrax rosters for injured players, byes, and slacking managers'),

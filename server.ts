@@ -120,8 +120,12 @@ app.get('/api/admin/heartbeats', async (req, res) => {
     const OFFLINE_THRESHOLD_MS = 6 * 60 * 1000; // 6 minutes
 
     for (const botId of bots) {
-      const doc = await db.collection('bot_heartbeats').doc(botId).get();
-      const data = typeof doc.data === 'function' ? doc.data() : doc;
+      const statusDoc = await db.collection('bot_status').doc(botId).get();
+      const hbDoc = await db.collection('bot_heartbeats').doc(botId).get();
+      const data = statusDoc.exists
+        ? (typeof statusDoc.data === 'function' ? statusDoc.data() : statusDoc)
+        : (typeof hbDoc.data === 'function' ? hbDoc.data() : hbDoc);
+
       const lastActive = data?.lastActive || (now - 1000 * 30);
       const diffMs = now - lastActive;
       const isOnline = diffMs <= OFFLINE_THRESHOLD_MS;
@@ -146,10 +150,8 @@ app.get('/api/admin/heartbeats', async (req, res) => {
 app.post('/api/admin/heartbeats/simulate-timeout', async (req, res) => {
   const { botId = 'commissioner' } = req.body;
   const expiredTime = Date.now() - (7 * 60 * 1000); // 7 minutes ago (> 6 mins)
-  await db.collection('bot_heartbeats').doc(botId).update({
-    lastActive: expiredTime,
-    status: 'OFFLINE'
-  });
+  await db.collection('bot_heartbeats').doc(botId).update({ lastActive: expiredTime, status: 'OFFLINE' });
+  await db.collection('bot_status').doc(botId).update({ lastActive: expiredTime, status: 'OFFLINE' });
   res.json({ success: true, message: `Set ${botId} lastActive to 7 minutes ago. Indicator is now RED (Offline).` });
 });
 
@@ -159,9 +161,11 @@ app.post('/api/admin/heartbeats/pulse', async (req, res) => {
   const now = Date.now();
   if (botId) {
     await db.collection('bot_heartbeats').doc(botId).update({ lastActive: now, status: 'ONLINE' });
+    await db.collection('bot_status').doc(botId).update({ lastActive: now, status: 'ONLINE' });
   } else {
     for (const b of ['commissioner', 'linemaker', 'producer', 'concierge']) {
       await db.collection('bot_heartbeats').doc(b).update({ lastActive: now, status: 'ONLINE' });
+      await db.collection('bot_status').doc(b).update({ lastActive: now, status: 'ONLINE' });
     }
   }
   res.json({ success: true, message: 'Heartbeat pulsed. Indicator is now GREEN (Online).' });

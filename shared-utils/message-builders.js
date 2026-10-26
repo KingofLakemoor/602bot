@@ -1,4 +1,4 @@
-import { EmbedBuilder } from 'discord.js';
+import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
 // Color Palette for Bot Ecosystem
 export const BOT_COLORS = {
@@ -38,6 +38,63 @@ export function buildMatchupEmbed({ matchups, week = 8, leagueName = 'Gridiron E
   });
 
   return embed;
+}
+
+export function buildCalendarHypeEmbed({ event }) {
+  return new EmbedBuilder()
+    .setColor(BOT_COLORS.CONCIERGE)
+    .setTitle(`🌟 CALENDAR EVENT HYPE: ${event.cleanTitle || event.title}`)
+    .setDescription(event.hypePrompt || 'An upcoming Club 602 gathering is around the corner!')
+    .addFields(
+      { name: '📍 Location', value: `\`${event.location || 'Club 602 Lounge'}\``, inline: true },
+      { name: '🏷️ Event Category', value: `\`${event.category || 'SOCIAL'}\``, inline: true },
+      { name: '💬 Targeted Channel', value: `\`#${event.targetChannel || 'club-602-lounge'}\``, inline: true }
+    )
+    .setTimestamp()
+    .setFooter({ text: 'Club 602 Calendar Sync Engine' });
+}
+
+export function buildHeavyActionEmbed({ alert }) {
+  return new EmbedBuilder()
+    .setColor(BOT_COLORS.LINEMAKER)
+    .setTitle('🚨 HEAVY ACTION ALERT DETECTED')
+    .setDescription(alert.message || 'Betting thresholds breached on active board!')
+    .addFields(
+      { name: 'Source', value: `\`${alert.broadcastedBy || 'System Engine'}\``, inline: true },
+      { name: 'Status', value: '`THRESHOLD BREACHED (-300)`', inline: true }
+    )
+    .setTimestamp()
+    .setFooter({ text: 'ChainLink Heavy Action Watchdog' });
+}
+
+// ==========================================
+// 5. ACTION ROW BUILDERS (BUTTONS)
+// ==========================================
+
+export function buildRsvpActionRow(eventId = 'ev-1') {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`rsvp_confirm_${eventId}`)
+      .setLabel('Confirm RSVP (+1 Guest)')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`rsvp_decline_${eventId}`)
+      .setLabel('Decline')
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+export function buildBoardActionRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('board_refresh')
+      .setLabel('🔄 Refresh Spreads')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('board_my_action')
+      .setLabel('💼 My Slips')
+      .setStyle(ButtonStyle.Secondary)
+  );
 }
 
 export function buildShameEmbed({ violations, leagueName = 'Gridiron Exotics' }) {
