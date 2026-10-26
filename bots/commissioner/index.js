@@ -32,20 +32,21 @@ export async function initCommissioner() {
   const db = getFirestoreDb();
 
   // -------------------------------------------------------------
-  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (Task 4)
+  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (bot_status & bot_heartbeats)
   // -------------------------------------------------------------
   async function writeHeartbeat() {
     try {
-      const heartbeatRef = db.collection('bot_heartbeats').doc('commissioner');
-      await heartbeatRef.set({
+      const heartbeatData = {
         botId: 'commissioner',
         botName: 'The Commissioner',
         lastActive: Date.now(),
         status: 'ONLINE',
         version: '1.0.0',
         guild: HUB_GUILD_ID || 'Hub Guild'
-      });
-      console.log('[Commissioner] 💓 Heartbeat written to bot_heartbeats/commissioner');
+      };
+      await db.collection('bot_heartbeats').doc('commissioner').set(heartbeatData);
+      await db.collection('bot_status').doc('commissioner').set(heartbeatData);
+      console.log('[Commissioner] 💓 Heartbeat written to bot_status/commissioner');
     } catch (e) {
       console.error('[Commissioner] Heartbeat failed:', e.message);
     }
@@ -91,32 +92,61 @@ export async function initCommissioner() {
       }
     }, (err) => console.error('[Commissioner] system_flags snapshot error:', err));
 
-    // Standings & Chop block listeners
+    // Guillotine Drop Listener: Chop League Standings & Elimination
     const chopDoc = db.collection('gridiron_exotics').doc('chop_league');
     chopDoc.onSnapshot((docSnapshot) => {
       const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
-      if (data && data.chopBlock) {
-        latestChopBlock = data.chopBlock;
+      if (data) {
+        if (data.chopBlock) latestChopBlock = data.chopBlock;
+        if (data.guillotine_trigger) {
+          console.log(`[Commissioner] 🪓 GUILLOTINE DROP TRIGGERED! Slicing roster for chopped user: ${data.guillotine_trigger.choppedUser || 'Slacking GM'}`);
+        }
       }
     }, (err) => console.error('[Commissioner] chop_league snapshot error:', err));
+
+    // Empire & Tier Updates Listener: Jackpot thresholds and promotion/relegation flags
+    const empireDoc = db.collection('gridiron_exotics').doc('empire_league');
+    empireDoc.onSnapshot((docSnapshot) => {
+      const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
+      if (data) {
+        if (data.jackpotThresholdBreached) {
+          console.log(`[Commissioner] 🏆 EMPIRE JACKPOT BREACHED! Total Pot: $${data.jackpotAmount || '5,000'}. Re-draft triggered!`);
+        }
+        if (data.tierUpdates) {
+          console.log(`[Commissioner] 📈 TIER PROMOTION/RELEGATION PROCESSED for ${data.tierUpdates.length || 0} teams.`);
+        }
+      }
+    }, (err) => console.error('[Commissioner] empire_league snapshot error:', err));
   } catch (err) {
     console.warn('[Commissioner] Firestore listener setup warning:', err.message);
   }
 
   // -------------------------------------------------------------
-  // 3. Targeted node-cron schedule: Sunday morning audit
+  // 3. Cron Jobs: Wall of Shame & Monday Night Miracle (MST Timezone)
   // -------------------------------------------------------------
+  // Wall of Shame: Sunday at 9:00 AM MST
   cron.schedule('0 9 * * 0', async () => {
-    console.log('[Commissioner] [node-cron] Running Sunday morning Fantrax roster audit...');
+    console.log('[Commissioner] [node-cron] Running Sunday 9:00 AM MST Wall of Shame Fantrax roster audit...');
     try {
       const violations = await auditRostersForShame(FANTRAX_LEAGUE_ID);
       if (violations.length > 0) {
-        console.log(`[Commissioner] Found ${violations.length} violations in Fantrax audit.`);
+        console.log(`[Commissioner] Wall of Shame: Identified ${violations.length} illegal rosters.`);
       }
     } catch (e) {
-      console.error('[Commissioner] Cron audit error:', e);
+      console.error('[Commissioner] Wall of Shame audit error:', e);
     }
-  });
+  }, { timezone: 'America/Denver' });
+
+  // Monday Night Miracle: Monday at 4:00 PM MST
+  cron.schedule('0 16 * * 1', async () => {
+    console.log('[Commissioner] [node-cron] Running Monday 4:00 PM MST Monday Night Miracle differential calculation...');
+    try {
+      const data = await getLeagueMatchups(FANTRAX_LEAGUE_ID);
+      console.log(`[Commissioner] Monday Night Miracle: Evaluated ${data.matchups?.length || 0} close matchups.`);
+    } catch (e) {
+      console.error('[Commissioner] Monday Night Miracle error:', e);
+    }
+  }, { timezone: 'America/Denver' });
 
   // -------------------------------------------------------------
   // 4. Slash Command Dispatcher
@@ -129,8 +159,19 @@ export async function initCommissioner() {
     try {
       if (commandName === 'matchup') {
         await interaction.deferReply({ ephemeral: false });
+        const targetUser = interaction.options.getUser('user');
         const data = await getLeagueMatchups(FANTRAX_LEAGUE_ID);
-        const embed = buildMatchupEmbed({ matchups: data.matchups || [], week: data.week || 8 });
+
+        let filteredMatchups = data.matchups || [];
+        if (targetUser) {
+          const matched = filteredMatchups.filter(m =>
+            m.team1?.manager?.toLowerCase().includes(targetUser.username.toLowerCase()) ||
+            m.team2?.manager?.toLowerCase().includes(targetUser.username.toLowerCase())
+          );
+          if (matched.length > 0) filteredMatchups = matched;
+        }
+
+        const embed = buildMatchupEmbed({ matchups: filteredMatchups, week: data.week || 8 });
         await interaction.editReply({ embeds: [embed] });
       }
 

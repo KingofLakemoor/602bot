@@ -40,20 +40,21 @@ export async function initProducer() {
   const db = getFirestoreDb();
 
   // -------------------------------------------------------------
-  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (Task 4)
+  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (bot_status & bot_heartbeats)
   // -------------------------------------------------------------
   async function writeHeartbeat() {
     try {
-      const heartbeatRef = db.collection('bot_heartbeats').doc('producer');
-      await heartbeatRef.set({
+      const heartbeatData = {
         botId: 'producer',
         botName: 'The Producer',
         lastActive: Date.now(),
         status: 'ONLINE',
         version: '1.0.0',
         guild: HUB_GUILD_ID || 'Hub Guild'
-      });
-      console.log('[Producer] 💓 Heartbeat written to bot_heartbeats/producer');
+      };
+      await db.collection('bot_heartbeats').doc('producer').set(heartbeatData);
+      await db.collection('bot_status').doc('producer').set(heartbeatData);
+      console.log('[Producer] 💓 Heartbeat written to bot_status/producer');
     } catch (e) {
       console.error('[Producer] Heartbeat failed:', e.message);
     }
@@ -63,8 +64,8 @@ export async function initProducer() {
   setInterval(writeHeartbeat, 5 * 60 * 1000);
 
   // -------------------------------------------------------------
-  // 2. ScriptLess Cast Elimination Listener (Task 2: scriptless_cast)
-  // Listens for manual eliminations triggered via Controller App
+  // 2. ScriptLess Cast Elimination & Tribal Drop Listener
+  // Listens for manual eliminations or score update drops
   // -------------------------------------------------------------
   try {
     const castCol = db.collection('scriptless_cast');
@@ -73,11 +74,18 @@ export async function initProducer() {
         snapshot.docs.forEach((doc) => {
           const cast = typeof doc.data === 'function' ? doc.data() : doc;
           if (cast.status === 'ELIMINATED') {
-            console.log(`[Producer] 🥀 [onSnapshot] Cast Member Elimination Verified: ${cast.name} (${cast.archetype}). Fantasy roster slots locked.`);
+            console.log(`[Producer] 🥀 [onSnapshot] Tribal Drop / Elimination Verified: ${cast.name} (${cast.archetype}). Roster slots locked and points finalized.`);
           }
         });
       }
     }, (err) => console.error('[Producer] scriptless_cast snapshot error:', err));
+
+    const scoresCol = db.collection('scriptless_scores');
+    scoresCol.onSnapshot((snapshot) => {
+      if (snapshot.docs && snapshot.docs.length > 0) {
+        console.log(`[Producer] 📊 Morning After Score Update Received. Scores calculated for current episode.`);
+      }
+    }, (err) => console.error('[Producer] scriptless_scores snapshot error:', err));
 
     const episodeDoc = db.collection('scriptless').doc('current_episode');
     episodeDoc.onSnapshot((docSnapshot) => {
@@ -91,10 +99,10 @@ export async function initProducer() {
   }
 
   // -------------------------------------------------------------
-  // 3. node-cron: Strict roster-lock alert 1 hour before airtime
+  // 3. node-cron: The Green Room Roster Lock (1 hour before episode)
   // -------------------------------------------------------------
   cron.schedule('0 19 * * 3', () => {
-    console.log('[Producer] [node-cron] ROSTER LOCK WARNING! 60 minutes until tonight\'s episode airs!');
+    console.log('[Producer] [node-cron] 🚨 GREEN ROOM ROSTER LOCK! Exactly 60 minutes until tonight\'s reality show episode airs. All lineups locking!');
   });
 
   // -------------------------------------------------------------

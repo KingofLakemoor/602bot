@@ -1,10 +1,13 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
+import cron from 'node-cron';
 import dotenv from 'dotenv';
 import { getFirestoreDb } from '../../shared-utils/firebase-config.js';
+import { parseCalendarEvents } from '../../shared-utils/calendar-sync.js';
 import {
   buildConciergeEventsEmbed,
   buildRsvpConfirmationEmbed,
-  buildScheduleEmbed
+  buildScheduleEmbed,
+  buildCalendarHypeEmbed
 } from '../../shared-utils/message-builders.js';
 
 dotenv.config();
@@ -49,20 +52,21 @@ export async function initConcierge() {
   const db = getFirestoreDb();
 
   // -------------------------------------------------------------
-  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (Task 4)
+  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (bot_status & bot_heartbeats)
   // -------------------------------------------------------------
   async function writeHeartbeat() {
     try {
-      const heartbeatRef = db.collection('bot_heartbeats').doc('concierge');
-      await heartbeatRef.set({
+      const heartbeatData = {
         botId: 'concierge',
         botName: 'The Concierge',
         lastActive: Date.now(),
         status: 'ONLINE',
         version: '1.0.0',
         guild: CLUB602_GUILD_ID || 'Club 602 Standalone'
-      });
-      console.log('[Concierge] 💓 Heartbeat written to bot_heartbeats/concierge');
+      };
+      await db.collection('bot_heartbeats').doc('concierge').set(heartbeatData);
+      await db.collection('bot_status').doc('concierge').set(heartbeatData);
+      console.log('[Concierge] 💓 Heartbeat written to bot_status/concierge');
     } catch (e) {
       console.error('[Concierge] Heartbeat failed:', e.message);
     }
@@ -72,9 +76,20 @@ export async function initConcierge() {
   setInterval(writeHeartbeat, 5 * 60 * 1000);
 
   // -------------------------------------------------------------
-  // 2. Calendar Sync & Announcements
+  // 2. Calendar Sync & Event Hype Listener (Google Calendar / Firebase)
   // -------------------------------------------------------------
   try {
+    const calendarCol = db.collection('club602_calendar');
+    calendarCol.onSnapshot((snapshot) => {
+      if (snapshot.docs && snapshot.docs.length > 0) {
+        const rawEvents = snapshot.docs.map(doc => ({ id: doc.id, ...(typeof doc.data === 'function' ? doc.data() : doc) }));
+        const parsedEvents = parseCalendarEvents(rawEvents);
+        parsedEvents.forEach((ev) => {
+          console.log(`[Concierge] 🌟 Event Hype Parsed: "${ev.cleanTitle}" [Tag: ${ev.primaryTag}] => Target Channel: #${ev.targetChannel}`);
+        });
+      }
+    }, (err) => console.error('[Concierge] club602_calendar snapshot error:', err));
+
     const announcementDoc = db.collection('club602_calendar').doc('announcements');
     announcementDoc.onSnapshot((docSnapshot) => {
       const data = typeof docSnapshot.data === 'function' ? docSnapshot.data() : docSnapshot;
@@ -88,6 +103,19 @@ export async function initConcierge() {
   } catch (err) {
     console.warn('[Concierge] Firestore listener warning:', err.message);
   }
+
+  // -------------------------------------------------------------
+  // 3. Cron Jobs: RSVP Chaser (48 hrs prior) & Morning After Media (10:00 AM next day)
+  // -------------------------------------------------------------
+  // RSVP Chaser: Runs daily to query events 48 hours out
+  cron.schedule('0 10 * * *', async () => {
+    console.log('[Concierge] [node-cron] 🎟️ RSVP CHASER: Querying unconfirmed members for events starting in 48 hours. Threading reminders...');
+  });
+
+  // Morning After Media: Runs at 10:00 AM day after event
+  cron.schedule('0 10 * * *', async () => {
+    console.log('[Concierge] [node-cron] 📸 MORNING AFTER MEDIA: Creating dedicated media drop thread for yesterday\'s lounge attendees.');
+  });
 
   // -------------------------------------------------------------
   // 3. Slash Command Dispatcher

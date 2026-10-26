@@ -131,34 +131,18 @@ function createMockFirestore() {
       lastUpdated: new Date().toISOString()
     });
 
-    // 5. Bot Heartbeats (4 Bots, updated every 5 mins, red if > 6 mins)
-    mockStore.set('bot_heartbeats/commissioner', {
-      botId: 'commissioner',
-      botName: 'The Commissioner',
-      lastActive: now - 1000 * 25, // 25s ago (Online)
-      version: '1.0.0',
-      status: 'ONLINE'
-    });
-    mockStore.set('bot_heartbeats/linemaker', {
-      botId: 'linemaker',
-      botName: 'The Linemaker',
-      lastActive: now - 1000 * 45, // 45s ago (Online)
-      version: '1.0.0',
-      status: 'ONLINE'
-    });
-    mockStore.set('bot_heartbeats/producer', {
-      botId: 'producer',
-      botName: 'The Producer',
-      lastActive: now - 1000 * 60, // 60s ago (Online)
-      version: '1.0.0',
-      status: 'ONLINE'
-    });
-    mockStore.set('bot_heartbeats/concierge', {
-      botId: 'concierge',
-      botName: 'The Concierge',
-      lastActive: now - 1000 * 30, // 30s ago (Online)
-      version: '1.0.0',
-      status: 'ONLINE'
+    // 5. Bot Heartbeats & Bot Status (4 Bots, updated every 5 mins, red if > 6 mins)
+    const bots = ['commissioner', 'linemaker', 'producer', 'concierge'];
+    bots.forEach((bId) => {
+      const bData = {
+        botId: bId,
+        botName: `The ${bId.charAt(0).toUpperCase() + bId.slice(1)}`,
+        lastActive: now - 1000 * 30,
+        version: '1.0.0',
+        status: 'ONLINE'
+      };
+      mockStore.set(`bot_heartbeats/${bId}`, bData);
+      mockStore.set(`bot_status/${bId}`, bData);
     });
 
     // 6. Additional Guild / League docs

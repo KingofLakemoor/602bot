@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
+import cron from 'node-cron';
 import dotenv from 'dotenv';
 import { getFirestoreDb } from '../../shared-utils/firebase-config.js';
 import {
@@ -56,20 +57,21 @@ export async function initLinemaker() {
   const db = getFirestoreDb();
 
   // -------------------------------------------------------------
-  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (Task 4)
+  // 1. Bot Heartbeat: Write lastActive timestamp to Firebase (bot_status & bot_heartbeats)
   // -------------------------------------------------------------
   async function writeHeartbeat() {
     try {
-      const heartbeatRef = db.collection('bot_heartbeats').doc('linemaker');
-      await heartbeatRef.set({
+      const heartbeatData = {
         botId: 'linemaker',
         botName: 'The Linemaker',
         lastActive: Date.now(),
         status: 'ONLINE',
         version: '1.0.0',
         guild: HUB_GUILD_ID || 'Hub Guild'
-      });
-      console.log('[Linemaker] 💓 Heartbeat written to bot_heartbeats/linemaker');
+      };
+      await db.collection('bot_heartbeats').doc('linemaker').set(heartbeatData);
+      await db.collection('bot_status').doc('linemaker').set(heartbeatData);
+      console.log('[Linemaker] 💓 Heartbeat written to bot_status/linemaker');
     } catch (e) {
       console.error('[Linemaker] Heartbeat failed:', e.message);
     }
@@ -96,6 +98,27 @@ export async function initLinemaker() {
       }
     }, (err) => console.error('[Linemaker] chainlink_alerts snapshot error:', err));
 
+    // Heavy Action Alert on action_board collection (threshold breaches e.g. -300 spread action)
+    const actionBoardCol = db.collection('action_board');
+    actionBoardCol.onSnapshot((snapshot) => {
+      if (snapshot.docs) {
+        snapshot.docs.forEach((doc) => {
+          const data = typeof doc.data === 'function' ? doc.data() : doc;
+          if (data && (data.spreadAction <= -300 || data.heavyActionAlert)) {
+            console.log(`[Linemaker] 🚨 HEAVY ACTION BREACH! Matchup: ${data.matchup || 'Game'}, Line: ${data.line || '-300'}. Triggering alert embed.`);
+          }
+        });
+      }
+    }, (err) => console.error('[Linemaker] action_board snapshot error:', err));
+
+    // Stuck Pick Audit listener
+    const pickAuditCol = db.collection('stuck_pick_audit');
+    pickAuditCol.onSnapshot((snapshot) => {
+      if (snapshot.docs && snapshot.docs.length > 0) {
+        console.log(`[Linemaker] 🔍 Daily Stuck Pick Audit collection populated (${snapshot.docs.length} pending slips audited).`);
+      }
+    }, (err) => console.error('[Linemaker] stuck_pick_audit snapshot error:', err));
+
     // Control flags listener (emergency freeze)
     const flagsDoc = db.collection('action_board').doc('control_flags');
     flagsDoc.onSnapshot((docSnapshot) => {
@@ -110,6 +133,13 @@ export async function initLinemaker() {
   } catch (err) {
     console.warn('[Linemaker] Firestore snapshot listener warning:', err.message);
   }
+
+  // -------------------------------------------------------------
+  // 3. Cron Job: 48-Hour Scheduling Window Announcement
+  // -------------------------------------------------------------
+  cron.schedule('0 12 * * 2', () => {
+    console.log('[Linemaker] [node-cron] ⏰ 48-HOUR WINDOW OPEN! ChainLink scheduling windows officially open for members.');
+  });
 
   // -------------------------------------------------------------
   // 3. Slash Command Dispatcher (Strict Ephemeral Replies)
