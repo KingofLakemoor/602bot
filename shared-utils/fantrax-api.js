@@ -19,7 +19,7 @@ export async function getLeagueStandings(leagueId) {
         'Accept': 'application/json',
         'User-Agent': 'Club602-QNW-BotEcosystem/1.0'
       },
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(5000)
     });
 
     if (!response.ok) {
@@ -28,7 +28,10 @@ export async function getLeagueStandings(leagueId) {
     }
 
     const data = await response.json();
-    return data;
+    if (!data || (!data.standings && !data.teams && !data.tables && !data.leagueId)) {
+      return getMockStandings(leagueId);
+    }
+    return { leagueId, ...data };
   } catch (err) {
     console.warn(`[Fantrax] Request failed (${err.message}). Using synthetic standings for simulation.`);
     return getMockStandings(leagueId);
@@ -51,14 +54,18 @@ export async function getLeagueMatchups(leagueId, period) {
         'Accept': 'application/json',
         'User-Agent': 'Club602-QNW-BotEcosystem/1.0'
       },
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(5000)
     });
 
     if (!response.ok) {
       return getMockMatchups(leagueId);
     }
 
-    return await response.json();
+    const data = await response.json();
+    if (!data || (!data.matchups && !data.leagueId)) {
+      return getMockMatchups(leagueId);
+    }
+    return { leagueId, ...data };
   } catch (err) {
     console.warn(`[Fantrax] Matchup fetch failed (${err.message}). Returning mock matchups.`);
     return getMockMatchups(leagueId);
@@ -79,14 +86,18 @@ export async function getLeagueRosters(leagueId) {
         'Accept': 'application/json',
         'User-Agent': 'Club602-QNW-BotEcosystem/1.0'
       },
-      signal: AbortSignal.timeout(8000)
+      signal: AbortSignal.timeout(5000)
     });
 
     if (!response.ok) {
       return getMockRosters(leagueId);
     }
 
-    return await response.json();
+    const data = await response.json();
+    if (!data || (!data.teams && !data.rosterInfoList && !data.leagueId)) {
+      return getMockRosters(leagueId);
+    }
+    return { leagueId, ...data };
   } catch (err) {
     console.warn(`[Fantrax] Rosters fetch failed (${err.message}). Returning mock rosters.`);
     return getMockRosters(leagueId);
