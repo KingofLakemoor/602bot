@@ -1,0 +1,246 @@
+{
+  "entities": {
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Authorized administrative accounts array for Controller App route guard",
+      "type": "object",
+      "properties": {
+        "admins": {
+          "type": "array",
+          "description": "List of authorized administrator email addresses"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of last admin configuration change"
+        }
+      },
+      "required": ["admins"]
+    },
+    "SystemFlags": {
+      "title": "SystemFlags",
+      "description": "System flags and override triggers for QNW fantasy bots",
+      "type": "object",
+      "properties": {
+        "forceAudit": {
+          "type": "boolean",
+          "description": "Manual flag to trigger immediate Fantrax roster audit"
+        },
+        "lastAuditCompleted": {
+          "type": "number",
+          "description": "Unix timestamp in ms when the audit was last executed"
+        },
+        "lastAuditSummary": {
+          "type": "string",
+          "description": "Summary result of the last audit execution"
+        },
+        "lastTriggeredBy": {
+          "type": "string",
+          "description": "Admin email who triggered the audit"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "description": "ISO timestamp of last flag mutation"
+        }
+      },
+      "required": ["forceAudit"]
+    },
+    "ChainlinkAlert": {
+      "title": "ChainlinkAlert",
+      "description": "Sharp action alerts and market movement broadcasts",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Alert unique identifier"
+        },
+        "message": {
+          "type": "string",
+          "description": "Custom broadcast alert text"
+        },
+        "broadcastedBy": {
+          "type": "string",
+          "description": "Admin or engine author of the alert"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation"
+        },
+        "timestamp": {
+          "type": "number",
+          "description": "Unix timestamp in ms"
+        }
+      },
+      "required": ["message"]
+    },
+    "ScriptlessCastMember": {
+      "title": "ScriptlessCastMember",
+      "description": "Reality show contestant roster with drama points and status",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Cast member document ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the reality contestant"
+        },
+        "archetype": {
+          "type": "string",
+          "description": "Reality TV persona archetype"
+        },
+        "status": {
+          "type": "string",
+          "description": "ACTIVE or ELIMINATED status"
+        },
+        "dramaPoints": {
+          "type": "number",
+          "description": "Fantasy drama points accumulated"
+        },
+        "eliminatedAt": {
+          "type": "string",
+          "description": "Ceremony or episode when eliminated"
+        },
+        "eliminatedBy": {
+          "type": "string",
+          "description": "Admin who triggered the elimination"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "description": "ISO timestamp of status update"
+        }
+      },
+      "required": ["id", "name", "status"]
+    },
+    "BotHeartbeat": {
+      "title": "BotHeartbeat",
+      "description": "Periodic health ping written by each of the 4 bot instances every 5 minutes",
+      "type": "object",
+      "properties": {
+        "botId": {
+          "type": "string",
+          "description": "Identifier of the bot (commissioner, linemaker, producer, concierge)"
+        },
+        "botName": {
+          "type": "string",
+          "description": "Display name of the bot"
+        },
+        "lastActive": {
+          "type": "number",
+          "description": "Unix timestamp in milliseconds of the last heartbeat"
+        },
+        "version": {
+          "type": "string",
+          "description": "Current bot codebase version"
+        },
+        "status": {
+          "type": "string",
+          "description": "ONLINE or OFFLINE health state"
+        },
+        "guild": {
+          "type": "string",
+          "description": "Target Discord server"
+        }
+      },
+      "required": ["botId", "lastActive", "status"]
+    },
+    "ChopLeague": {
+      "title": "ChopLeague",
+      "description": "Gridiron Exotics Guillotine cut line status and danger block",
+      "type": "object",
+      "properties": {
+        "leagueName": {
+          "type": "string",
+          "description": "Name of the chop league"
+        },
+        "cutLineScore": {
+          "type": "number",
+          "description": "Survival threshold score"
+        },
+        "chopBlock": {
+          "type": "array",
+          "description": "List of teams at risk"
+        },
+        "guillotine_trigger": {
+          "type": "object",
+          "description": "Manual override blade drop trigger"
+        },
+        "lastUpdated": {
+          "type": "string",
+          "description": "ISO timestamp"
+        }
+      },
+      "required": ["cutLineScore"]
+    },
+    "ClubCalendarEvent": {
+      "title": "ClubCalendarEvent",
+      "description": "Club 602 gatherings, tastings, and screenings",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Event unique identifier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title with bracketed tags for channel routing"
+        },
+        "dateTime": {
+          "type": "string",
+          "description": "Event scheduled date and time"
+        },
+        "location": {
+          "type": "string",
+          "description": "Club 602 lounge room"
+        },
+        "rsvpCount": {
+          "type": "number",
+          "description": "Current confirmed member reservations"
+        },
+        "capacity": {
+          "type": "number",
+          "description": "Maximum seating capacity"
+        },
+        "details": {
+          "type": "string",
+          "description": "Event description and member instructions"
+        }
+      },
+      "required": ["id", "title"]
+    }
+  },
+  "firestore": {
+    "/system_config/{configId}": {
+      "schema": "AdminConfig",
+      "description": "Application configurations including admin authorization array"
+    },
+    "/system_flags/{flagId}": {
+      "schema": "SystemFlags",
+      "description": "System flags and bot trigger controls"
+    },
+    "/chainlink_alerts/{alertId}": {
+      "schema": "ChainlinkAlert",
+      "description": "Linemaker sports betting action alerts"
+    },
+    "/scriptless_cast/{castId}": {
+      "schema": "ScriptlessCastMember",
+      "description": "ScriptLess reality TV contestants and elimination state"
+    },
+    "/bot_heartbeats/{botId}": {
+      "schema": "BotHeartbeat",
+      "description": "Heartbeat timestamps for bot uptime monitoring"
+    },
+    "/bot_status/{botId}": {
+      "schema": "BotHeartbeat",
+      "description": "Status telemetry for bot instances"
+    },
+    "/gridiron_exotics/{docId}": {
+      "schema": "ChopLeague",
+      "description": "Fantasy sports standings and guillotine state"
+    },
+    "/club602_calendar/{eventId}": {
+      "schema": "ClubCalendarEvent",
+      "description": "Club 602 social calendar and announcements"
+    }
+  }
+}

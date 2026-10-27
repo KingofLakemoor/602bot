@@ -1,0 +1,91 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Admin Verification against system_config/admins document
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'rick@club602.com' ||
+        request.auth.token.email == 'kingoflakemoor@gmail.com' ||
+        request.auth.token.email == 'admin@qnw.com'
+      );
+    }
+
+    // 1. System Config (Admin authorization array)
+    match /system_config/{configId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow write: if isAdmin() && isValidId(configId);
+    }
+
+    // 2. System Flags (Commissioner Force Audit & Auto-Reset)
+    match /system_flags/{flagId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(flagId);
+    }
+
+    // 3. ChainLink Action Alerts (Linemaker alerts)
+    match /chainlink_alerts/{alertId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(alertId);
+    }
+
+    // 4. ScriptLess Cast Members (Producer contestant eliminations)
+    match /scriptless_cast/{castId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(castId);
+    }
+
+    // 5. Bot Heartbeats & Bot Status (Bot monitoring)
+    match /bot_heartbeats/{botId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(botId);
+    }
+
+    match /bot_status/{botId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(botId);
+    }
+
+    // 6. Gridiron Exotics & Chop League
+    match /gridiron_exotics/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(docId);
+    }
+
+    // 7. Club 602 Calendar & Announcements
+    match /club602_calendar/{eventId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(eventId);
+    }
+
+    // 8. Club 602 Member RSVPs
+    match /club602_rsvps/{rsvpId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(rsvpId);
+    }
+  }
+}

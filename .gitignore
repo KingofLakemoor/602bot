@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Private Secrets & Firebase Service Accounts (NEVER COMMIT)
+*service-account*.json
+firebase-service-account.json
+*.key
+*.pem
+serviceAccountKey.json

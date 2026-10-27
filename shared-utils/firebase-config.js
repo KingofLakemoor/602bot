@@ -17,11 +17,21 @@ const eventLog = [];
 export function getFirestoreDb() {
   if (db) return db;
 
-  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || (fs.existsSync(path.resolve('./firebase-service-account.json')) ? './firebase-service-account.json' : null);
 
   try {
-    if (serviceAccountPath && fs.existsSync(serviceAccountPath)) {
-      const serviceAccount = JSON.parse(fs.readFileSync(path.resolve(serviceAccountPath), 'utf8'));
+    let serviceAccount = null;
+
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    } else if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+      const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8');
+      serviceAccount = JSON.parse(decoded);
+    } else if (serviceAccountPath && fs.existsSync(serviceAccountPath)) {
+      serviceAccount = JSON.parse(fs.readFileSync(path.resolve(serviceAccountPath), 'utf8'));
+    }
+
+    if (serviceAccount) {
       if (!admin.apps.length) {
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount)
@@ -29,7 +39,7 @@ export function getFirestoreDb() {
       }
       db = admin.firestore();
       isInitialized = true;
-      console.log('[Firebase] Successfully initialized Firestore with service account file.');
+      console.log('[Firebase] Successfully initialized Firestore with service account credential.');
       return db;
     } else if (process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_APPLICATION_CREDENTIALS) {
       if (!admin.apps.length) {
@@ -40,7 +50,7 @@ export function getFirestoreDb() {
       console.log('[Firebase] Initialized Firestore via default application credentials.');
       return db;
     } else {
-      console.warn('[Firebase] No FIREBASE_SERVICE_ACCOUNT_PATH found or file does not exist yet. Using Mock Firestore provider for local development/simulation.');
+      console.warn('[Firebase] No Service Account credentials found (safe for development). Using Mock Firestore provider for local simulation.');
       db = createMockFirestore();
       return db;
     }

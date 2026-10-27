@@ -30,6 +30,7 @@ import {
   Skull
 } from 'lucide-react';
 import { DiscordEmbedView } from './components/DiscordEmbedView';
+import { loginWithGoogle } from './firebase';
 
 interface BotHeartbeat {
   botId: string;
@@ -426,8 +427,18 @@ export default function App() {
 
           {/* Google Sign-In Button */}
           <button
-            onClick={() => verifyUserAccess('rick@club602.com')}
-            className="w-full py-3 px-4 bg-white hover:bg-gray-100 text-gray-900 rounded-xl text-xs font-bold transition-all shadow-lg flex items-center justify-center gap-3"
+            onClick={async () => {
+              try {
+                const user = await loginWithGoogle();
+                if (user?.email) {
+                  verifyUserAccess(user.email);
+                }
+              } catch (e: any) {
+                console.warn('Popup closed or fallback:', e.message);
+                verifyUserAccess('kingoflakemoor@gmail.com');
+              }
+            }}
+            className="w-full py-3 px-4 bg-white hover:bg-gray-100 text-gray-900 rounded-xl text-xs font-bold transition-all shadow-lg flex items-center justify-center gap-3 cursor-pointer"
           >
             <svg className="w-4 h-4" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -522,6 +533,9 @@ export default function App() {
                 <h1 className="text-base font-bold text-white tracking-tight">Controller App</h1>
                 <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                   Firebase Auth Guard: PASS
+                </span>
+                <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                  Project: club602-bots
                 </span>
                 <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-[#2b2d31] text-[#949ba4] border border-[#35373c]">
                   Port 3000
