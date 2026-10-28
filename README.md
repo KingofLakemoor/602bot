@@ -91,3 +91,25 @@ docker compose ps
 # producer      Up
 # concierge     Up
 ```
+
+---
+
+## 🔒 Security Best Practices & Firebase API Keys
+
+### Understanding Firebase Client API Keys
+Firebase Web Client API keys (`apiKey` starting with `AIza...`) are designed as **public project identifiers** for frontend applications rather than secret credentials. Unlike GCP Service Account JSON keys or private backend secrets, client API keys are exposed to browsers by design. Real data protection is enforced via **Firebase Security Rules** and **Firebase App Check**.
+
+### Addressing GitHub Secret Scanning Alerts
+GitHub's Secret Scanner automatically flags any Google API key pattern. To secure your setup and resolve scanning alerts:
+
+1. **Restrict Key in GCP Console**:
+   - Go to [Google Cloud Console Credentials](https://console.cloud.google.com/apis/credentials).
+   - Edit the API key (`AIzaSy...`).
+   - Under **Application Restrictions**, restrict usage to authorized HTTP Referrers / website domains.
+   - Under **API Restrictions**, restrict access exclusively to needed Firebase APIs (e.g., Firebase Authentication, Firestore API).
+2. **Key Rotation**:
+   - Create a new restricted API key in Google Cloud Console.
+   - Update your environment variables (`VITE_FIREBASE_API_KEY="..."`).
+   - Delete/revoke the old key in GCP Console and resolve the GitHub Secret Scanning alert as **Revoked** or **False Positive / Used in public web client with restrictions**.
+3. **Environment Variable Configuration**:
+   - You can override `firebase-applet-config.json` at build/runtime using `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_PROJECT_ID`, etc., in your `.env` file.
