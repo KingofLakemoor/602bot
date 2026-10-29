@@ -64,26 +64,44 @@ The Controller App operates as a **Firebase-Driven Control Dashboard**:
 
 ---
 
-## ☁️ Firebase Apps Cloud & Decentralized Deployment Pivot
+## ☁️ Hybrid Architecture: Firebase Apps Dashboard & Raspberry Pi Bot Fleet
 
-We have pivoted from hosting exclusively on a single local Raspberry Pi to **Firebase Apps (Firebase Hosting & Firebase App Hosting)** for multi-region scalability and decentralized use.
+This ecosystem uses a **Hybrid Architecture** combining cloud web hosting with edge bot execution:
 
-### 1. Firebase Hosting Deployment
+1. **Control App (Firebase Apps / Firebase Hosting)**:
+   - The React Control App dashboard is hosted on **Firebase Hosting** for easy, secure, decentralized access from any browser or device.
+   - Admins can design custom actions, view telemetry, and toggle overrides without hosting a web server locally or opening Pi ports.
+
+2. **Bot Fleet (Raspberry Pi)**:
+   - The 4 Discord bots (`commissioner`, `linemaker`, `producer`, `concierge`) run on the **Raspberry Pi** as Docker containers, maintaining persistent real-time WebSocket connections to Discord's Gateway API.
+
+3. **Decentralized Real-Time Sync (Firebase Firestore)**:
+   - The Control App on Firebase and the bot fleet on the Raspberry Pi communicate seamlessly in real-time through cloud Firestore (`onSnapshot` listeners and `bot_custom_actions` collection).
+
+---
+
+### 1. Host the Control App on Firebase Hosting
 Build and deploy the React Control App to global Firebase Hosting CDN:
 ```bash
 npm run build
 firebase deploy --only hosting
 ```
 
-### 2. Decentralized Multi-Guild Setup
-Each bot container or server instance connects to the shared Firebase Firestore project via `.env`:
-* `HUB_GUILD_ID`: Hub Discord Server ID (QNW Fantasy / ChainLink)
-* `CLUB602_GUILD_ID`: Standalone Club 602 Discord Server ID
-* `FIREBASE_SERVICE_ACCOUNT_PATH`: Path to Firebase Service Account JSON credentials
+### 2. Deploy the Bot Fleet on the Raspberry Pi
+Run the bot containers on the Raspberry Pi connecting to the shared Firebase Firestore project via `.env`:
+```bash
+# Configure environment variables on the Raspberry Pi
+cp .env.example .env
+nano .env
+
+# Deploy slash commands & start bot containers
+node discord-bots/deploy-commands.js
+docker compose up -d --build
+```
 
 ---
 
-## 🚀 Raspberry Pi / Docker Container Setup (Optional Local Node)
+## 🚀 Raspberry Pi Docker Deployment (4 Bots)
 
 ### 1. Configure `.env`
 ```bash

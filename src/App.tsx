@@ -468,6 +468,7 @@ export default function App() {
       verifyUserAccess(currentUserEmail);
     }
     refreshTelemetry();
+    fetchCustomActions();
     const interval = setInterval(refreshTelemetry, 5000); // 5-second polling for live heartbeats
     return () => clearInterval(interval);
   }, []);
