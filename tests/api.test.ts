@@ -144,6 +144,102 @@ describe('Express Server API Integration Tests', () => {
     assert.strictEqual(data.bots.length, 4);
   });
 
+  describe('Custom Bot Actions & Triggers Studio Endpoints', () => {
+    const TEST_ACTION_ID = 'act_vip_lounge_roast_test';
+
+    it('GET /api/admin/actions - returns seeded custom actions', async () => {
+      const res = await fetch(`${BASE_URL}/api/admin/actions`);
+      assert.strictEqual(res.status, 200);
+      const data = await res.json();
+      assert.ok(Array.isArray(data.actions));
+      assert.ok(data.actions.length >= 4);
+    });
+
+    it('POST /api/admin/actions - creates new custom action', async () => {
+      const payload = {
+        id: TEST_ACTION_ID,
+        commandName: 'vip-lounge-roast',
+        botId: 'commissioner',
+        description: 'Delivers custom VIP roasts',
+        status: 'active',
+        visibility: 'public',
+        triggerType: 'slash_command',
+        embedTitle: '🔥 VIP LOUNGE ROAST',
+        embedDescription: 'Your lineup selection belongs in a museum of terrible choices.',
+        embedColor: '#d97706',
+        fields: [{ name: 'Heat Index', value: '10/10', inline: true }]
+      };
+
+      const res = await fetch(`${BASE_URL}/api/admin/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      assert.strictEqual(res.status, 200);
+      const data = await res.json();
+      assert.strictEqual(data.success, true);
+      assert.strictEqual(data.action.id, TEST_ACTION_ID);
+      assert.strictEqual(data.action.commandName, 'vip-lounge-roast');
+    });
+
+    it('POST /api/simulate-command - executes custom action', async () => {
+      const res = await fetch(`${BASE_URL}/api/simulate-command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'vip-lounge-roast' })
+      });
+      assert.strictEqual(res.status, 200);
+      const data = await res.json();
+      assert.strictEqual(data.command, '/vip-lounge-roast');
+      assert.strictEqual(data.bot, 'Commissioner');
+      assert.strictEqual(data.isPaused, false);
+      assert.strictEqual(data.embed.title, '🔥 VIP LOUNGE ROAST');
+    });
+
+    it('POST /api/admin/actions/:id/toggle-pause - pauses custom action', async () => {
+      const res = await fetch(`${BASE_URL}/api/admin/actions/${TEST_ACTION_ID}/toggle-pause`, {
+        method: 'POST'
+      });
+      assert.strictEqual(res.status, 200);
+      const data = await res.json();
+      assert.strictEqual(data.success, true);
+      assert.strictEqual(data.newStatus, 'paused');
+    });
+
+    it('POST /api/simulate-command - handles paused custom action', async () => {
+      const res = await fetch(`${BASE_URL}/api/simulate-command`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'vip-lounge-roast' })
+      });
+      assert.strictEqual(res.status, 200);
+      const data = await res.json();
+      assert.strictEqual(data.isPaused, true);
+      assert.ok(data.embed.title.includes('PAUSED'));
+    });
+
+    it('PUT /api/admin/actions/:id - updates custom action', async () => {
+      const res = await fetch(`${BASE_URL}/api/admin/actions/${TEST_ACTION_ID}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'active', embedTitle: '🔥 UPDATED VIP ROAST' })
+      });
+      assert.strictEqual(res.status, 200);
+      const data = await res.json();
+      assert.strictEqual(data.success, true);
+      assert.strictEqual(data.action.embedTitle, '🔥 UPDATED VIP ROAST');
+    });
+
+    it('DELETE /api/admin/actions/:id - deletes custom action', async () => {
+      const res = await fetch(`${BASE_URL}/api/admin/actions/${TEST_ACTION_ID}`, {
+        method: 'DELETE'
+      });
+      assert.strictEqual(res.status, 200);
+      const data = await res.json();
+      assert.strictEqual(data.success, true);
+    });
+  });
+
   describe('Slash Command Simulator Endpoints', () => {
     const commands = [
       'matchup', 'shame', 'guillotine-check',

@@ -1,20 +1,7 @@
 version: '3.8'
 
 services:
-  # 1. Controller App (React Admin Dashboard for Rick & Admins)
-  controller-app:
-    build:
-      context: .
-      dockerfile: controller-app/Dockerfile
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      - PORT=3000
-      - NODE_ENV=production
-
-  # 2. Bot 1: The Commissioner (QNW / Gridiron Exotics)
+  # 1. Bot 1: The Commissioner (QNW / Gridiron Exotics)
   commissioner:
     build:
       context: .
@@ -41,7 +28,7 @@ services:
     restart: unless-stopped
     env_file: .env
 
-  # 5. Bot 4: The Concierge (Club 602 Standalone)
+  # 4. Bot 4: The Concierge (Club 602 Standalone)
   concierge:
     build:
       context: .

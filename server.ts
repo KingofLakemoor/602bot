@@ -280,6 +280,242 @@ app.get('/api/admin/firestore-state', (req, res) => {
 });
 
 // ==============================================================
+// CUSTOM BOT ACTIONS & TRIGGERS STUDIO
+// ==============================================================
+
+const DEFAULT_CUSTOM_ACTIONS = [
+  {
+    id: 'weekly-hot-take',
+    commandName: 'weekly-hot-take',
+    botId: 'commissioner',
+    description: 'Delivers unfiltered weekly Fantasy hot takes and roasts',
+    status: 'active',
+    visibility: 'public',
+    triggerType: 'slash_command',
+    triggerPattern: '/weekly-hot-take',
+    embedTitle: '🔥 COMMISSIONER WEEKLY HOT TAKE',
+    embedDescription: 'Your bench produced more points than your starting lineup this week. The Commissioners Guild demands an immediate written explanation.',
+    embedColor: '#d97706',
+    fields: [
+      { name: 'Heat Level', value: '🌶️🌶️🌶️ Extreme Roast', inline: true },
+      { name: 'Penalty Risk', value: 'High - Wall of Shame Audit Pending', inline: true }
+    ],
+    footer: 'QNW Fantasy Enforcement Protocol',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'sharp-alert',
+    commandName: 'sharp-alert',
+    botId: 'linemaker',
+    description: 'Pushes high-volume sharp betting flow alerts',
+    status: 'active',
+    visibility: 'ephemeral',
+    triggerType: 'slash_command',
+    triggerPattern: '/sharp-alert',
+    embedTitle: '⚡ SHARP MONEY ALERT (EXCLUSIVE)',
+    embedDescription: '82% of sharp syndicate money moved to 49ers -2.5 within 4 minutes. Liquidity pool window closing soon!',
+    embedColor: '#10b981',
+    fields: [
+      { name: 'Action Split', value: '82% Sharp / 18% Public', inline: true },
+      { name: 'Line Movement', value: '-2.5 -> -3.5', inline: true }
+    ],
+    footer: 'ChainLink Sportsbook Real-time Feed',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'backstage-leak',
+    commandName: 'backstage-leak',
+    botId: 'producer',
+    description: 'Broadcasts unedited confessional teasers & leaks',
+    status: 'active',
+    visibility: 'public',
+    triggerType: 'slash_command',
+    triggerPattern: '/backstage-leak',
+    embedTitle: '🎬 SCRIPTLESS BACKSTAGE LEAK',
+    embedDescription: 'Lead villain Vanessa was spotted rehearsing poolside arguments 10 minutes before the Rose Ceremony.',
+    embedColor: '#ec4899',
+    fields: [
+      { name: 'Drama Rating', value: '98/100 (Unfiltered)', inline: true },
+      { name: 'Backstage Source', value: 'Key Grip Confessional Mic', inline: true }
+    ],
+    footer: 'ScriptLess Reality TV Production Network',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'vip-pass',
+    commandName: 'vip-pass',
+    botId: 'concierge',
+    description: 'Generates instant VIP Club 602 lounge access key',
+    status: 'active',
+    visibility: 'ephemeral',
+    triggerType: 'slash_command',
+    triggerPattern: '/vip-pass',
+    embedTitle: '🍸 CLUB 602 VIP PASS',
+    embedDescription: 'Welcome to the Sky Lounge! Show this digital badge at the main bar for complimentary NFL RedZone refreshments.',
+    embedColor: '#6366f1',
+    fields: [
+      { name: 'Access Level', value: 'VIP Tier 1 All-Access', inline: true },
+      { name: 'Lounge Perk', value: 'Priority Screening & Open Bar', inline: true }
+    ],
+    footer: 'Club 602 Hospitality & Social Concierge',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }
+];
+
+async function fetchCustomActionsFromDb() {
+  const snapshot = await db.collection('bot_custom_actions').get();
+  const actions: any[] = [];
+  snapshot.forEach((doc: any) => {
+    const data = typeof doc.data === 'function' ? doc.data() : doc;
+    actions.push({ id: doc.id, ...data });
+  });
+
+  if (actions.length === 0) {
+    for (const action of DEFAULT_CUSTOM_ACTIONS) {
+      await db.collection('bot_custom_actions').doc(action.id).set(action);
+      actions.push(action);
+    }
+  }
+
+  return actions;
+}
+
+function getBotDisplayName(botId: string): string {
+  switch (botId) {
+    case 'commissioner': return 'Commissioner';
+    case 'linemaker': return 'Linemaker';
+    case 'producer': return 'Producer';
+    case 'concierge': return 'Concierge';
+    default: return botId.charAt(0).toUpperCase() + botId.slice(1);
+  }
+}
+
+function parseHexColor(hexStr?: string): number {
+  if (!hexStr) return 0x5865F2;
+  const clean = hexStr.replace('#', '').replace('0x', '');
+  const parsed = parseInt(clean, 16);
+  return isNaN(parsed) ? 0x5865F2 : parsed;
+}
+
+// GET /api/admin/actions
+app.get('/api/admin/actions', async (req, res) => {
+  try {
+    const actions = await fetchCustomActionsFromDb();
+    res.json({ actions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/actions - Create
+app.post('/api/admin/actions', async (req, res) => {
+  const {
+    commandName,
+    botId = 'commissioner',
+    description = '',
+    status = 'active',
+    visibility = 'public',
+    triggerType = 'slash_command',
+    triggerPattern = '',
+    embedTitle = '',
+    embedDescription = '',
+    embedColor = '#5865f2',
+    fields = [],
+    footer = '',
+    adminUser = 'Admin'
+  } = req.body;
+
+  if (!commandName) {
+    return res.status(400).json({ error: 'commandName is required' });
+  }
+
+  const cleanCmd = commandName.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const actionId = req.body.id || `act_${cleanCmd}_${Date.now().toString(36)}`;
+
+  const newAction = {
+    id: actionId,
+    commandName: cleanCmd,
+    botId,
+    description,
+    status,
+    visibility,
+    triggerType,
+    triggerPattern: triggerPattern || `/${cleanCmd}`,
+    embedTitle: embedTitle || `/${cleanCmd} Response`,
+    embedDescription,
+    embedColor,
+    fields,
+    footer,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdBy: adminUser
+  };
+
+  try {
+    await db.collection('bot_custom_actions').doc(actionId).set(newAction);
+    res.json({ success: true, action: newAction });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/admin/actions/:id - Update
+app.put('/api/admin/actions/:id', async (req, res) => {
+  const { id } = req.params;
+  const updateData = {
+    ...req.body,
+    updatedAt: new Date().toISOString()
+  };
+  delete updateData.id;
+
+  try {
+    await db.collection('bot_custom_actions').doc(id).update(updateData);
+    const updatedDoc = await db.collection('bot_custom_actions').doc(id).get();
+    const data = typeof updatedDoc.data === 'function' ? updatedDoc.data() : updatedDoc;
+    res.json({ success: true, action: { id, ...data } });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/admin/actions/:id - Delete
+app.delete('/api/admin/actions/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.collection('bot_custom_actions').doc(id).delete();
+    res.json({ success: true, message: `Action ${id} deleted successfully.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/actions/:id/toggle-pause - Toggle status
+app.post('/api/admin/actions/:id/toggle-pause', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const docRef = db.collection('bot_custom_actions').doc(id);
+    const docSnap = await docRef.get();
+    const data = typeof docSnap.data === 'function' ? docSnap.data() : docSnap;
+
+    const currentStatus = data?.status || 'active';
+    const newStatus = currentStatus === 'active' ? 'paused' : 'active';
+
+    await docRef.update({
+      status: newStatus,
+      updatedAt: new Date().toISOString()
+    });
+
+    res.json({ success: true, id, newStatus, message: `Action ${id} is now ${newStatus}.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==============================================================
 // FLEET STATUS & SIMULATOR ROUTES
 // ==============================================================
 
@@ -357,6 +593,53 @@ app.post('/api/simulate-command', async (req, res) => {
   const { command, options = {}, user = { id: 'usr_77', username: 'Vanguard_GM' } } = req.body;
 
   try {
+    const normCmd = (command || '').replace(/^\//, '').toLowerCase().trim();
+
+    // 1. Check custom bot actions in Firestore
+    const customActions = await fetchCustomActionsFromDb();
+    const matchedAction = customActions.find(
+      (a: any) => a.commandName?.toLowerCase() === normCmd || a.id?.toLowerCase() === normCmd
+    );
+
+    if (matchedAction) {
+      const isEphemeral = matchedAction.visibility === 'ephemeral';
+      const botName = getBotDisplayName(matchedAction.botId);
+
+      if (matchedAction.status === 'paused') {
+        return res.json({
+          bot: botName,
+          command: `/${matchedAction.commandName}`,
+          visibility: matchedAction.visibility ? matchedAction.visibility.toUpperCase() : 'PUBLIC',
+          isEphemeral,
+          isPaused: true,
+          embed: {
+            title: '⏸️ ACTION PAUSED BY ADMIN',
+            description: `The bot action \`/${matchedAction.commandName}\` is currently **PAUSED** by administrators in the Control App Studio.`,
+            color: 0xF59E0B,
+            fields: [
+              { name: 'Bot Owner', value: `The ${botName}`, inline: true },
+              { name: 'Status', value: 'Paused (In-Active)', inline: true }
+            ]
+          }
+        });
+      }
+
+      return res.json({
+        bot: botName,
+        command: `/${matchedAction.commandName}`,
+        visibility: matchedAction.visibility ? matchedAction.visibility.toUpperCase() : 'PUBLIC',
+        isEphemeral,
+        isPaused: false,
+        embed: {
+          title: matchedAction.embedTitle || `/${matchedAction.commandName}`,
+          description: matchedAction.embedDescription || 'Custom bot response executed.',
+          color: parseHexColor(matchedAction.embedColor),
+          fields: matchedAction.fields || [],
+          footer: matchedAction.footer ? { text: matchedAction.footer } : undefined
+        }
+      });
+    }
+
     let result = null;
 
     switch (command) {

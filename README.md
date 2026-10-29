@@ -1,6 +1,6 @@
 # Club 602 & QNW Bot Ecosystem — Monorepo & Controller Specification
 
-A unified repository containing four distinct Discord bots and a dedicated **React/Next.js Controller App** for Rick & Admins, deployed via Docker Compose to a Raspberry Pi with a shared Firebase Firestore backend.
+A unified repository containing four distinct Discord bots and a dedicated **React Controller App** for Rick & Admins, powered by Firebase Apps (Firebase Hosting, Firestore Cloud Database, & Auth) for decentralized cloud deployment.
 
 ---
 
@@ -54,17 +54,54 @@ Copy this checklist into a GitHub Issue or your project tracker:
 
 ---
 
-## 🎯 The Controller App Strategy
+## 🎯 The Controller App & No-Code Custom Actions Studio
 
-The Controller App operates as a **Firebase-Driven Dashboard**:
-* Instead of the web dashboard sending direct HTTP or WebSocket commands to each isolated bot container (which requires complex internal container routing and open ports), the Controller App simply updates specific Firestore documents.
-* Because all 4 bots subscribe via real-time `onSnapshot` listeners, changing a value in the Controller App triggers the bots in Discord **instantly** without additional network latency or cloud polling costs.
+The Controller App operates as a **Firebase-Driven Control Dashboard**:
+* **Custom Bot Actions & Triggers Studio**: Admins can visually create, edit, pause, and delete custom bot actions (`/commands`, keywords, or cron schedules) directly from the Control App.
+* **Live Discord Embed Preview**: Visual side-by-side preview component shows exact response embeds before publishing.
+* **1-Click Preset Templates**: Quick-start templates for hot take roasts, sharp money flow alerts, confessional leaks, and VIP lounge passes.
+* **Real-time Synchronization**: Changes in the Control App update `bot_custom_actions` in Firestore, instantly updating bot responses across all connected Discord servers without requiring Pi redeployments or server restarts.
 
 ---
 
-## 🚀 Raspberry Pi Docker Deployment (5 Containers)
+## ☁️ Hybrid Architecture: Firebase App Hosting & Raspberry Pi Bot Fleet
 
-### 1. Configure `.env`
+This ecosystem uses a **Hybrid Architecture** combining cloud web hosting with edge bot execution:
+
+1. **Control App (Firebase App Hosting)**:
+   - The React Control App dashboard is hosted on **Firebase App Hosting / Firebase Hosting** for easy, secure, decentralized access from any browser or device.
+   - Admins can design custom actions, view telemetry, and toggle overrides without hosting a web server locally or opening Pi ports.
+
+2. **Bot Fleet (Raspberry Pi)**:
+   - The 4 Discord bots (`commissioner`, `linemaker`, `producer`, `concierge`) run on the **Raspberry Pi** as Docker containers, maintaining persistent real-time WebSocket connections to Discord's Gateway API.
+
+3. **Shared Firestore Data Bridge**:
+   - Both the cloud-hosted web app and the locally-hosted Pi bots read and write to the same shared cloud Firestore database (`onSnapshot` listeners and `bot_custom_actions` collection).
+   - Clicking a manual override or updating a custom action on your phone anywhere in the world instantly triggers the bots running on the Raspberry Pi.
+
+---
+
+## 🔧 Firebase App Hosting Monorepo Setup & Deployment
+
+Firebase App Hosting natively supports monorepos. Follow these steps to configure deployment:
+
+1. **Configure Firebase App Hosting**:
+   - Navigate to **App Hosting** in the Firebase Console and click **Get started**.
+   - Authorize your GitHub account and select the `KingofLakemoor/602bot` repository.
+   - **Critical Monorepo Step**: Set the **Root Directory** option to `/controller-app` (or `/` if deploying from the root directory) so Firebase builds only the web dashboard and ignores bot code.
+   - Select your deployment branch (`main`).
+
+2. **Split Environment Variables**:
+   - **In Firebase App Hosting (Web App)**: Add public Firebase client configuration keys (e.g. `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_PROJECT_ID`). Do **not** place Discord bot tokens here.
+   - **On the Raspberry Pi (Bot Fleet)**: Keep `.env` containing private bot tokens (`COMMISSIONER_TOKEN`, `LINEMAKER_TOKEN`, `PRODUCER_TOKEN`, `CONCIERGE_TOKEN`), `HUB_GUILD_ID`, `CLUB602_GUILD_ID`, and `FIREBASE_SERVICE_ACCOUNT_PATH`.
+
+---
+
+## 🚀 Raspberry Pi Docker Deployment (4 Bots)
+
+Since the Control App is hosted on Firebase, the Raspberry Pi `docker-compose.yml` runs only the 4 Discord bot containers:
+
+### 1. Configure `.env` on the Pi
 ```bash
 cp .env.example .env
 nano .env
@@ -76,16 +113,15 @@ Provide the required Discord tokens, `HUB_GUILD_ID`, `CLUB602_GUILD_ID`, and pla
 node discord-bots/deploy-commands.js
 ```
 
-### 3. Launch with Docker Compose
+### 3. Launch Bot Fleet with Docker Compose
 ```bash
 docker compose up -d --build
 ```
 
-Verify all 5 services:
+Verify the 4 bot services:
 ```bash
 docker compose ps
 # Output:
-# controller    Up (port 0.0.0.0:3000->3000)
 # commissioner  Up
 # linemaker     Up
 # producer      Up

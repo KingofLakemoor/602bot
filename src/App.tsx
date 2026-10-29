@@ -27,7 +27,16 @@ import {
   Mail,
   Activity,
   Clock,
-  Skull
+  Skull,
+  Plus,
+  Trash2,
+  Edit3,
+  Search,
+  Filter,
+  Eye,
+  Pause,
+  HelpCircle,
+  X
 } from 'lucide-react';
 import { DiscordEmbedView } from './components/DiscordEmbedView';
 import { loginWithGoogle } from './firebase';
@@ -47,6 +56,31 @@ interface CastMember {
   archetype: string;
   status: 'ACTIVE' | 'ELIMINATED';
   dramaPoints?: number;
+}
+
+interface CustomActionField {
+  name: string;
+  value: string;
+  inline?: boolean;
+}
+
+interface CustomBotAction {
+  id: string;
+  commandName: string;
+  botId: 'commissioner' | 'linemaker' | 'producer' | 'concierge';
+  description: string;
+  status: 'active' | 'paused';
+  visibility: 'public' | 'ephemeral';
+  triggerType: 'slash_command' | 'keyword' | 'cron_schedule' | 'firestore_event';
+  triggerPattern?: string;
+  embedTitle: string;
+  embedDescription: string;
+  embedColor: string;
+  fields?: CustomActionField[];
+  footer?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
 }
 
 export default function App() {
@@ -85,9 +119,289 @@ export default function App() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<{ message: string; type: 'success' | 'alert' } | null>(null);
 
+  // Custom Actions & Triggers Studio State
+  const [customActions, setCustomActions] = useState<CustomBotAction[]>([]);
+  const [customActionsLoading, setCustomActionsLoading] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [filterBot, setFilterBot] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  // Form / Editor state
+  const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
+  const [editingAction, setEditingAction] = useState<CustomBotAction | null>(null);
+  const [formCommandName, setFormCommandName] = useState<string>('');
+  const [formBotId, setFormBotId] = useState<'commissioner' | 'linemaker' | 'producer' | 'concierge'>('commissioner');
+  const [formDescription, setFormDescription] = useState<string>('');
+  const [formStatus, setFormStatus] = useState<'active' | 'paused'>('active');
+  const [formVisibility, setFormVisibility] = useState<'public' | 'ephemeral'>('public');
+  const [formTriggerType, setFormTriggerType] = useState<'slash_command' | 'keyword' | 'cron_schedule' | 'firestore_event'>('slash_command');
+  const [formTriggerPattern, setFormTriggerPattern] = useState<string>('');
+  const [formEmbedTitle, setFormEmbedTitle] = useState<string>('');
+  const [formEmbedDescription, setFormEmbedDescription] = useState<string>('');
+  const [formEmbedColor, setFormEmbedColor] = useState<string>('#d97706');
+  const [formFields, setFormFields] = useState<CustomActionField[]>([]);
+  const [formFooter, setFormFooter] = useState<string>('');
+  const [isSavingAction, setIsSavingAction] = useState<boolean>(false);
+
   // Simulator channel & messages
   const [activeChannel, setActiveChannel] = useState<'megachannel-qnw' | 'club-602-lounge'>('megachannel-qnw');
   const [messages, setMessages] = useState<any[]>([]);
+
+  // Fetch Custom Bot Actions
+  const fetchCustomActions = async () => {
+    setCustomActionsLoading(true);
+    try {
+      const res = await fetch('/api/admin/actions');
+      if (res.ok) {
+        const data = await res.json();
+        setCustomActions(data.actions || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch custom actions:', e);
+    } finally {
+      setCustomActionsLoading(false);
+    }
+  };
+
+  const openCreateForm = () => {
+    setEditingAction(null);
+    setFormCommandName('');
+    setFormBotId('commissioner');
+    setFormDescription('New custom bot command');
+    setFormStatus('active');
+    setFormVisibility('public');
+    setFormTriggerType('slash_command');
+    setFormTriggerPattern('/new-command');
+    setFormEmbedTitle('✨ NEW BOT RESPONSE');
+    setFormEmbedDescription('Custom response text configured in Control App.');
+    setFormEmbedColor('#d97706');
+    setFormFields([{ name: 'Status', value: 'Active', inline: true }]);
+    setFormFooter('Club 602 & QNW Custom Bot Engine');
+    setIsFormOpen(true);
+  };
+
+  const openEditForm = (action: CustomBotAction) => {
+    setEditingAction(action);
+    setFormCommandName(action.commandName);
+    setFormBotId(action.botId);
+    setFormDescription(action.description || '');
+    setFormStatus(action.status);
+    setFormVisibility(action.visibility);
+    setFormTriggerType(action.triggerType || 'slash_command');
+    setFormTriggerPattern(action.triggerPattern || `/${action.commandName}`);
+    setFormEmbedTitle(action.embedTitle || '');
+    setFormEmbedDescription(action.embedDescription || '');
+    setFormEmbedColor(action.embedColor || '#5865f2');
+    setFormFields(action.fields ? [...action.fields] : []);
+    setFormFooter(action.footer || '');
+    setIsFormOpen(true);
+  };
+
+  const applyTemplate = (templateType: 'roast' | 'sharp' | 'leak' | 'vip') => {
+    if (templateType === 'roast') {
+      setFormCommandName('daily-roast');
+      setFormBotId('commissioner');
+      setFormDescription('Delivers a fresh daily roast for slacking managers');
+      setFormStatus('active');
+      setFormVisibility('public');
+      setFormTriggerType('slash_command');
+      setFormTriggerPattern('/daily-roast');
+      setFormEmbedTitle('🔥 COMMISSIONER DAILY ROAST');
+      setFormEmbedDescription('Your roster strategy is a case study in unforced errors. Bench points do not win matchups.');
+      setFormEmbedColor('#d97706');
+      setFormFields([
+        { name: 'Heat Index', value: '🌶️🌶️🌶️🌶️ 9/10 Hot', inline: true },
+        { name: 'Target GM', value: 'Slacking Manager', inline: true }
+      ]);
+      setFormFooter('QNW Fantasy Enforcement Bureau');
+    } else if (templateType === 'sharp') {
+      setFormCommandName('sharp-flow');
+      setFormBotId('linemaker');
+      setFormDescription('Broadcasts sharp money flow alerts and liquidity changes');
+      setFormStatus('active');
+      setFormVisibility('ephemeral');
+      setFormTriggerType('slash_command');
+      setFormTriggerPattern('/sharp-flow');
+      setFormEmbedTitle('⚡ SHARP MONEY FLOW ALERT');
+      setFormEmbedDescription('Over 78% of syndicate bets landed on Eagles -4.0 in the last 10 minutes.');
+      setFormEmbedColor('#10b981');
+      setFormFields([
+        { name: 'Market Split', value: '78% Sharp / 22% Public', inline: true },
+        { name: 'Liquidity Pool', value: '$45,200 Locked', inline: true }
+      ]);
+      setFormFooter('ChainLink Sportsbook Telemetry');
+    } else if (templateType === 'leak') {
+      setFormCommandName('confessional-leak');
+      setFormBotId('producer');
+      setFormDescription('Leaks backstage drama and raw unedited audio clips');
+      setFormStatus('active');
+      setFormVisibility('public');
+      setFormTriggerType('slash_command');
+      setFormTriggerPattern('/confessional-leak');
+      setFormEmbedTitle('🎬 SCRIPTLESS CONFESSIONAL LEAK');
+      setFormEmbedDescription('Hot mic caught Tyler negotiating a spin-off deal inside the pantry.');
+      setFormEmbedColor('#ec4899');
+      setFormFields([
+        { name: 'Spicy Meter', value: '96% Drama', inline: true },
+        { name: 'Source', value: 'Production Audio Lead', inline: true }
+      ]);
+      setFormFooter('ScriptLess Reality TV Network');
+    } else if (templateType === 'vip') {
+      setFormCommandName('lounge-perks');
+      setFormBotId('concierge');
+      setFormDescription('Grants exclusive Club 602 Sky Lounge perks and event tickets');
+      setFormStatus('active');
+      setFormVisibility('ephemeral');
+      setFormTriggerType('slash_command');
+      setFormTriggerPattern('/lounge-perks');
+      setFormEmbedTitle('🍸 CLUB 602 LOUNGE SPECIAL');
+      setFormEmbedDescription('Present this digital pass at the bar for complimentary craft cocktails during RedZone.');
+      setFormEmbedColor('#6366f1');
+      setFormFields([
+        { name: 'Access Tier', value: 'VIP Gold Pass', inline: true },
+        { name: 'Lounge Location', value: 'Sky Lounge Screen 1', inline: true }
+      ]);
+      setFormFooter('Club 602 Social Hospitality');
+    }
+    setIsFormOpen(true);
+  };
+
+  const handleSaveAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formCommandName.trim()) return;
+
+    setIsSavingAction(true);
+    try {
+      const payload = {
+        id: editingAction ? editingAction.id : undefined,
+        commandName: formCommandName,
+        botId: formBotId,
+        description: formDescription,
+        status: formStatus,
+        visibility: formVisibility,
+        triggerType: formTriggerType,
+        triggerPattern: formTriggerPattern || `/${formCommandName}`,
+        embedTitle: formEmbedTitle,
+        embedDescription: formEmbedDescription,
+        embedColor: formEmbedColor,
+        fields: formFields,
+        footer: formFooter,
+        adminUser: currentUserEmail
+      };
+
+      const url = editingAction ? `/api/admin/actions/${editingAction.id}` : '/api/admin/actions';
+      const method = editingAction ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setActionNotice({
+          message: editingAction
+            ? `✅ Updated custom action /${formCommandName}!`
+            : `✅ Created new custom bot action /${formCommandName}!`,
+          type: 'success'
+        });
+        setIsFormOpen(false);
+        fetchCustomActions();
+      }
+    } catch (err: any) {
+      setActionNotice({ message: err.message, type: 'alert' });
+    } finally {
+      setIsSavingAction(false);
+      setTimeout(() => setActionNotice(null), 5000);
+    }
+  };
+
+  const handleTogglePause = async (action: CustomBotAction) => {
+    try {
+      const res = await fetch(`/api/admin/actions/${action.id}/toggle-pause`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActionNotice({
+          message: `Action /${action.commandName} is now ${data.newStatus.toUpperCase()}`,
+          type: 'success'
+        });
+        fetchCustomActions();
+      }
+    } catch (err: any) {
+      setActionNotice({ message: err.message, type: 'alert' });
+    } finally {
+      setTimeout(() => setActionNotice(null), 4000);
+    }
+  };
+
+  const handleDeleteAction = async (action: CustomBotAction) => {
+    if (!confirm(`Are you sure you want to delete /${action.commandName}?`)) return;
+    try {
+      const res = await fetch(`/api/admin/actions/${action.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setActionNotice({ message: `Deleted action /${action.commandName}`, type: 'success' });
+        fetchCustomActions();
+      }
+    } catch (err: any) {
+      setActionNotice({ message: err.message, type: 'alert' });
+    } finally {
+      setTimeout(() => setActionNotice(null), 4000);
+    }
+  };
+
+  const handleSimulateCustomAction = async (action: CustomBotAction) => {
+    try {
+      const res = await fetch('/api/simulate-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: action.commandName, user: { username: currentUserEmail || 'Admin' } })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const botName = data.bot;
+        let avatar = 'https://images.unsplash.com/photo-1566577739112-5180d4bf9390?w=100';
+        let color = '#d97706';
+        if (action.botId === 'linemaker') {
+          avatar = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100';
+          color = '#10b981';
+        } else if (action.botId === 'producer') {
+          avatar = 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?w=100';
+          color = '#ec4899';
+        } else if (action.botId === 'concierge') {
+          avatar = 'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?w=100';
+          color = '#6366f1';
+        }
+
+        setMessages(prev => [
+          {
+            id: Math.random().toString(36).substring(7),
+            user: currentUserEmail,
+            command: `/${data.command} [Studio Test]`,
+            bot: botName,
+            botRole: `${botName} Custom Action`,
+            botAvatar: avatar,
+            botColor: color,
+            isEphemeral: data.isEphemeral,
+            embed: data.embed,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            channel: 'megachannel-qnw'
+          },
+          ...prev
+        ]);
+
+        setActionNotice({
+          message: `⚡ Simulated /${action.commandName}! Check Megachannel Feed tab to view live output.`,
+          type: 'success'
+        });
+      }
+    } catch (e: any) {
+      setActionNotice({ message: e.message, type: 'alert' });
+    } finally {
+      setTimeout(() => setActionNotice(null), 5000);
+    }
+  };
 
   // Fetch Firestore Admin array and verify user access
   const verifyUserAccess = async (email: string) => {
@@ -154,6 +468,7 @@ export default function App() {
       verifyUserAccess(currentUserEmail);
     }
     refreshTelemetry();
+    fetchCustomActions();
     const interval = setInterval(refreshTelemetry, 5000); // 5-second polling for live heartbeats
     return () => clearInterval(interval);
   }, []);
@@ -585,6 +900,18 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex items-center justify-between overflow-x-auto">
           <nav className="flex space-x-1 py-2">
             <button
+              onClick={() => setActiveTab('studio')}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-all ${
+                activeTab === 'studio'
+                  ? 'bg-gradient-to-r from-amber-500 via-pink-600 to-indigo-600 text-white font-bold shadow-md shadow-indigo-500/20'
+                  : 'text-[#949ba4] hover:text-white hover:bg-[#2b2d31]'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+              <span>Custom Actions Studio</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('overrides')}
               className={`px-3.5 py-1.5 rounded-md text-xs font-semibold flex items-center gap-2 transition-all ${
                 activeTab === 'overrides'
@@ -667,6 +994,523 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-6">
+        {/* ========================================================= */}
+        {/* TAB 0: CUSTOM BOT ACTIONS & TRIGGERS STUDIO               */}
+        {/* ========================================================= */}
+        {activeTab === 'studio' && (
+          <div className="space-y-6">
+            {/* Header Banner */}
+            <div className="bg-gradient-to-r from-amber-500/10 via-pink-500/10 to-indigo-500/10 p-5 rounded-2xl border border-amber-500/30 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold uppercase">
+                    No-Code Action Designer
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-mono font-bold uppercase">
+                    Firebase App Cloud Storage
+                  </span>
+                </div>
+                <h2 className="text-lg font-bold text-white mt-1 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-400" />
+                  <span>Custom Actions & Triggers Studio</span>
+                </h2>
+                <p className="text-xs text-[#949ba4] mt-1 max-w-2xl">
+                  Create, edit, pause, and delete custom bot actions (`/commands`, keywords, or cron schedules) in real-time. Responses render directly into Discord channels.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={openCreateForm}
+                  className="py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black rounded-xl text-xs font-bold transition-all shadow-lg flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>New Custom Action</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Presets / Templates */}
+            <div className="bg-[#1e1f22] p-4 rounded-xl border border-[#2b2d31] space-y-2">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[#949ba4] flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span>1-Click Preset Templates (Quick Load)</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-1">
+                <button
+                  onClick={() => applyTemplate('roast')}
+                  className="p-3 bg-[#18191c] hover:bg-[#2b2d31] border border-amber-500/30 rounded-lg text-left transition-all group cursor-pointer"
+                >
+                  <div className="text-xs font-bold text-amber-400 group-hover:text-amber-300 flex items-center gap-1.5">
+                    <span>🔥 Hot Take Roast</span>
+                  </div>
+                  <div className="text-[10px] text-[#80848e] mt-0.5">Commissioner • Public</div>
+                </button>
+
+                <button
+                  onClick={() => applyTemplate('sharp')}
+                  className="p-3 bg-[#18191c] hover:bg-[#2b2d31] border border-emerald-500/30 rounded-lg text-left transition-all group cursor-pointer"
+                >
+                  <div className="text-xs font-bold text-emerald-400 group-hover:text-emerald-300 flex items-center gap-1.5">
+                    <span>⚡ Sharp Money Flow</span>
+                  </div>
+                  <div className="text-[10px] text-[#80848e] mt-0.5">Linemaker • Ephemeral</div>
+                </button>
+
+                <button
+                  onClick={() => applyTemplate('leak')}
+                  className="p-3 bg-[#18191c] hover:bg-[#2b2d31] border border-pink-500/30 rounded-lg text-left transition-all group cursor-pointer"
+                >
+                  <div className="text-xs font-bold text-pink-400 group-hover:text-pink-300 flex items-center gap-1.5">
+                    <span>🎬 Confessional Leak</span>
+                  </div>
+                  <div className="text-[10px] text-[#80848e] mt-0.5">Producer • Public</div>
+                </button>
+
+                <button
+                  onClick={() => applyTemplate('vip')}
+                  className="p-3 bg-[#18191c] hover:bg-[#2b2d31] border border-indigo-500/30 rounded-lg text-left transition-all group cursor-pointer"
+                >
+                  <div className="text-xs font-bold text-indigo-400 group-hover:text-indigo-300 flex items-center gap-1.5">
+                    <span>🍸 VIP Lounge Pass</span>
+                  </div>
+                  <div className="text-[10px] text-[#80848e] mt-0.5">Concierge • Ephemeral</div>
+                </button>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="bg-[#1e1f22] p-3 rounded-xl border border-[#2b2d31] flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-1 min-w-[220px]">
+                <Search className="w-4 h-4 text-[#80848e] ml-2" />
+                <input
+                  type="text"
+                  placeholder="Search actions by name or title..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="bg-[#18191c] border border-[#2b2d31] rounded-lg px-3 py-1.5 text-xs text-white placeholder-[#80848e] focus:outline-none focus:border-[#5865f2] w-full"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-[#80848e]" />
+                <select
+                  value={filterBot}
+                  onChange={(e) => setFilterBot(e.target.value)}
+                  className="bg-[#18191c] border border-[#2b2d31] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#5865f2]"
+                >
+                  <option value="all">All Bots</option>
+                  <option value="commissioner">The Commissioner</option>
+                  <option value="linemaker">The Linemaker</option>
+                  <option value="producer">The Producer</option>
+                  <option value="concierge">The Concierge</option>
+                </select>
+
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="bg-[#18191c] border border-[#2b2d31] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#5865f2]"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active Only</option>
+                  <option value="paused">Paused Only</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Custom Action Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {customActions
+                .filter(action => {
+                  if (filterBot !== 'all' && action.botId !== filterBot) return false;
+                  if (filterStatus !== 'all' && action.status !== filterStatus) return false;
+                  if (searchQuery.trim()) {
+                    const q = searchQuery.toLowerCase();
+                    return (
+                      action.commandName.toLowerCase().includes(q) ||
+                      action.embedTitle?.toLowerCase().includes(q) ||
+                      action.description?.toLowerCase().includes(q)
+                    );
+                  }
+                  return true;
+                })
+                .map(action => {
+                  const isPaused = action.status === 'paused';
+                  let botName = 'Commissioner';
+                  let botBadgeColor = 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+                  if (action.botId === 'linemaker') {
+                    botName = 'Linemaker';
+                    botBadgeColor = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+                  } else if (action.botId === 'producer') {
+                    botName = 'Producer';
+                    botBadgeColor = 'bg-pink-500/20 text-pink-300 border-pink-500/30';
+                  } else if (action.botId === 'concierge') {
+                    botName = 'Concierge';
+                    botBadgeColor = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30';
+                  }
+
+                  return (
+                    <div
+                      key={action.id}
+                      className={`bg-[#1e1f22] rounded-xl border p-4 space-y-3 transition-all ${
+                        isPaused
+                          ? 'border-amber-500/40 opacity-80'
+                          : 'border-[#2b2d31] hover:border-[#35373c]'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-white text-sm">/{action.commandName}</span>
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border font-semibold ${botBadgeColor}`}>
+                              {botName}
+                            </span>
+                            <span
+                              className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                                isPaused
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              }`}
+                            >
+                              {isPaused ? 'PAUSED' : 'ACTIVE'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#949ba4] mt-1">{action.description || 'Custom bot action'}</p>
+                        </div>
+                      </div>
+
+                      {/* Embed Details Summary */}
+                      <div className="p-3 bg-[#18191c] rounded-lg border border-[#2b2d31] space-y-1 text-xs">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-white">{action.embedTitle || `/${action.commandName}`}</span>
+                          <span className="text-[10px] font-mono text-[#80848e]">
+                            {action.visibility === 'ephemeral' ? '🔒 Ephemeral' : '🌐 Public'}
+                          </span>
+                        </div>
+                        <p className="text-[#dbdee1] line-clamp-2 text-[11px]">{action.embedDescription}</p>
+
+                        {action.fields && action.fields.length > 0 && (
+                          <div className="flex flex-wrap gap-2 pt-1 border-t border-[#2b2d31]">
+                            {action.fields.map((f, i) => (
+                              <span key={i} className="text-[10px] bg-[#2b2d31] px-2 py-0.5 rounded text-[#949ba4]">
+                                <strong className="text-white">{f.name}:</strong> {f.value}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action Bar */}
+                      <div className="flex items-center justify-between pt-1 text-xs">
+                        <button
+                          onClick={() => handleSimulateCustomAction(action)}
+                          className="px-2.5 py-1.5 bg-[#5865f2] hover:bg-[#4752c4] text-white rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="Run action in Megachannel simulator feed"
+                        >
+                          <Play className="w-3 h-3" />
+                          <span>Simulate</span>
+                        </button>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleTogglePause(action)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1 border transition-colors cursor-pointer ${
+                              isPaused
+                                ? 'bg-emerald-950/40 text-emerald-300 border-emerald-800/50 hover:bg-emerald-900/50'
+                                : 'bg-amber-950/40 text-amber-300 border-amber-800/50 hover:bg-amber-900/50'
+                            }`}
+                          >
+                            {isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                            <span>{isPaused ? 'Resume' : 'Pause'}</span>
+                          </button>
+
+                          <button
+                            onClick={() => openEditForm(action)}
+                            className="p-1.5 bg-[#2b2d31] hover:bg-[#35373c] text-white rounded-lg border border-[#35373c] cursor-pointer"
+                            title="Edit"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteAction(action)}
+                            className="p-1.5 bg-[#2b2d31] hover:bg-red-950/40 hover:text-red-300 text-[#949ba4] rounded-lg border border-[#35373c] cursor-pointer"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Creation / Edit Modal Overlay */}
+            {isFormOpen && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+                <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-2xl max-w-4xl w-full p-6 space-y-6 shadow-2xl my-8">
+                  <div className="flex items-center justify-between border-b border-[#2b2d31] pb-4">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-amber-400" />
+                      <h3 className="text-base font-bold text-white">
+                        {editingAction ? `Edit Action /${editingAction.commandName}` : 'Create Custom Bot Action'}
+                      </h3>
+                    </div>
+                    <button
+                      onClick={() => setIsFormOpen(false)}
+                      className="p-1 text-[#80848e] hover:text-white rounded-lg hover:bg-[#2b2d31]"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveAction} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Left side: Form controls */}
+                    <div className="lg:col-span-7 space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-[#949ba4] block mb-1">
+                            Slash Command Name
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-2 text-xs text-[#80848e] font-mono">/</span>
+                            <input
+                              type="text"
+                              required
+                              placeholder="e.g. roast-of-the-day"
+                              value={formCommandName}
+                              onChange={(e) => setFormCommandName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                              className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg pl-6 pr-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-[#949ba4] block mb-1">
+                            Target Bot Owner
+                          </label>
+                          <select
+                            value={formBotId}
+                            onChange={(e: any) => setFormBotId(e.target.value)}
+                            className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-semibold"
+                          >
+                            <option value="commissioner">The Commissioner (QNW)</option>
+                            <option value="linemaker">The Linemaker (ChainLink)</option>
+                            <option value="producer">The Producer (ScriptLess)</option>
+                            <option value="concierge">The Concierge (Club 602)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-[#949ba4] block mb-1">
+                          Description
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Brief summary of what this command does..."
+                          value={formDescription}
+                          onChange={(e) => setFormDescription(e.target.value)}
+                          className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-[#949ba4] block mb-1">Trigger</label>
+                          <select
+                            value={formTriggerType}
+                            onChange={(e: any) => setFormTriggerType(e.target.value)}
+                            className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                          >
+                            <option value="slash_command">Slash Command</option>
+                            <option value="keyword">Keyword Match</option>
+                            <option value="cron_schedule">Cron Schedule</option>
+                            <option value="firestore_event">Firestore Event</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-[#949ba4] block mb-1">Visibility</label>
+                          <select
+                            value={formVisibility}
+                            onChange={(e: any) => setFormVisibility(e.target.value)}
+                            className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                          >
+                            <option value="public">🌐 Public Response</option>
+                            <option value="ephemeral">🔒 Ephemeral (Private)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-[#949ba4] block mb-1">Status</label>
+                          <select
+                            value={formStatus}
+                            onChange={(e: any) => setFormStatus(e.target.value)}
+                            className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                          >
+                            <option value="active">Active</option>
+                            <option value="paused">Paused</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-[#2b2d31] space-y-3">
+                        <div className="text-xs font-bold text-amber-400">Discord Embed Response Styling</div>
+
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-[#949ba4] block mb-1">Embed Title</label>
+                          <input
+                            type="text"
+                            value={formEmbedTitle}
+                            onChange={(e) => setFormEmbedTitle(e.target.value)}
+                            className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-bold"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-[#949ba4] block mb-1">Embed Description / Body</label>
+                          <textarea
+                            rows={3}
+                            value={formEmbedDescription}
+                            onChange={(e) => setFormEmbedDescription(e.target.value)}
+                            className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-sans"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold uppercase text-[#949ba4] block mb-1">Color Stripe (Hex)</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={formEmbedColor}
+                              onChange={(e) => setFormEmbedColor(e.target.value)}
+                              className="w-8 h-8 rounded border border-[#2b2d31] cursor-pointer bg-transparent"
+                            />
+                            <input
+                              type="text"
+                              value={formEmbedColor}
+                              onChange={(e) => setFormEmbedColor(e.target.value)}
+                              className="w-32 bg-[#18191c] border border-[#2b2d31] rounded px-2 py-1 text-xs text-white font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Fields List Editor */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[10px] font-bold uppercase text-[#949ba4]">Embed Key-Value Fields</label>
+                            <button
+                              type="button"
+                              onClick={() => setFormFields([...formFields, { name: 'New Field', value: 'Value', inline: true }])}
+                              className="text-[10px] text-amber-400 hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" /> Add Field
+                            </button>
+                          </div>
+
+                          <div className="space-y-2">
+                            {formFields.map((field, idx) => (
+                              <div key={idx} className="flex items-center gap-2 bg-[#18191c] p-2 rounded-lg border border-[#2b2d31]">
+                                <input
+                                  type="text"
+                                  placeholder="Field Name"
+                                  value={field.name}
+                                  onChange={(e) => {
+                                    const updated = [...formFields];
+                                    updated[idx].name = e.target.value;
+                                    setFormFields(updated);
+                                  }}
+                                  className="w-1/3 bg-[#1e1f22] border border-[#2b2d31] rounded px-2 py-1 text-xs text-white"
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Field Value"
+                                  value={field.value}
+                                  onChange={(e) => {
+                                    const updated = [...formFields];
+                                    updated[idx].value = e.target.value;
+                                    setFormFields(updated);
+                                  }}
+                                  className="flex-1 bg-[#1e1f22] border border-[#2b2d31] rounded px-2 py-1 text-xs text-white"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setFormFields(formFields.filter((_, i) => i !== idx))}
+                                  className="p-1 text-red-400 hover:bg-red-950/40 rounded cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-[#2b2d31] flex items-center justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setIsFormOpen(false)}
+                          className="px-4 py-2 bg-[#2b2d31] hover:bg-[#35373c] text-white rounded-lg text-xs font-bold cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSavingAction}
+                          className="px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-black rounded-lg text-xs font-bold shadow-md hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 cursor-pointer"
+                        >
+                          {isSavingAction ? 'Saving...' : editingAction ? 'Save Changes' : 'Create Action'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Right side: Live Discord Embed Preview */}
+                    <div className="lg:col-span-5 bg-[#313338] p-4 rounded-xl border border-[#2b2d31] flex flex-col justify-between space-y-4 shadow-inner">
+                      <div>
+                        <div className="text-[10px] font-bold uppercase text-[#80848e] mb-3 flex items-center gap-1.5">
+                          <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Live Discord Embed Preview</span>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-xs text-[#80848e]">
+                            <span>@{currentUserEmail || 'Admin'} invoked</span>
+                            <span className="font-mono text-white bg-[#2b2d31] px-1.5 py-0.5 rounded">
+                              /{formCommandName || 'command'}
+                            </span>
+                          </div>
+
+                          <DiscordEmbedView
+                            embed={{
+                              title: formEmbedTitle || `/${formCommandName || 'command'}`,
+                              description: formEmbedDescription || 'Response description preview...',
+                              color: parseInt(formEmbedColor.replace('#', ''), 16) || 0xD97706,
+                              fields: formFields,
+                              footer: formFooter ? { text: formFooter } : undefined
+                            }}
+                            isEphemeral={formVisibility === 'ephemeral'}
+                            botName={formBotId.charAt(0).toUpperCase() + formBotId.slice(1)}
+                            botColor={formEmbedColor}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-[#2b2d31] rounded-lg border border-[#35373c] text-[10px] text-[#949ba4] space-y-1">
+                        <div className="font-bold text-white uppercase tracking-wider">// How this works:</div>
+                        <p>
+                          Saving writes to <code className="text-amber-300">bot_custom_actions</code> in Firestore. All bots fetch active actions dynamically when users run commands in Discord!
+                        </p>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ========================================================= */}
         {/* TAB 1: TASK 2 & 3 MANUAL OVERRIDES                        */}
         {/* ========================================================= */}

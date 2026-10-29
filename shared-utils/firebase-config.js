@@ -198,6 +198,12 @@ function createMockFirestore() {
               notify(colName, docId, next);
               return { writeTime: new Date() };
             },
+            async delete() {
+              mockStore.delete(key);
+              logEvent(colName, docId, 'DELETE', null);
+              notify(colName, docId, null);
+              return { writeTime: new Date() };
+            },
             onSnapshot(callback, errCallback) {
               const listenerKey = `${colName}/${docId}`;
               if (!mockListeners.has(listenerKey)) mockListeners.set(listenerKey, new Set());
