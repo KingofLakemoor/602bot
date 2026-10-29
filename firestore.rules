@@ -87,5 +87,11 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && isValidId(rsvpId);
     }
+
+    // 9. Custom Bot Actions & Triggers Studio
+    match /bot_custom_actions/{actionId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(actionId);
+    }
   }
 }

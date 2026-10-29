@@ -1,6 +1,6 @@
 # Club 602 & QNW Bot Ecosystem — Monorepo & Controller Specification
 
-A unified repository containing four distinct Discord bots and a dedicated **React/Next.js Controller App** for Rick & Admins, deployed via Docker Compose to a Raspberry Pi with a shared Firebase Firestore backend.
+A unified repository containing four distinct Discord bots and a dedicated **React Controller App** for Rick & Admins, powered by Firebase Apps (Firebase Hosting, Firestore Cloud Database, & Auth) for decentralized cloud deployment.
 
 ---
 
@@ -54,15 +54,36 @@ Copy this checklist into a GitHub Issue or your project tracker:
 
 ---
 
-## 🎯 The Controller App Strategy
+## 🎯 The Controller App & No-Code Custom Actions Studio
 
-The Controller App operates as a **Firebase-Driven Dashboard**:
-* Instead of the web dashboard sending direct HTTP or WebSocket commands to each isolated bot container (which requires complex internal container routing and open ports), the Controller App simply updates specific Firestore documents.
-* Because all 4 bots subscribe via real-time `onSnapshot` listeners, changing a value in the Controller App triggers the bots in Discord **instantly** without additional network latency or cloud polling costs.
+The Controller App operates as a **Firebase-Driven Control Dashboard**:
+* **Custom Bot Actions & Triggers Studio**: Admins can visually create, edit, pause, and delete custom bot actions (`/commands`, keywords, or cron schedules) directly from the Control App.
+* **Live Discord Embed Preview**: Visual side-by-side preview component shows exact response embeds before publishing.
+* **1-Click Preset Templates**: Quick-start templates for hot take roasts, sharp money flow alerts, confessional leaks, and VIP lounge passes.
+* **Real-time Synchronization**: Changes in the Control App update `bot_custom_actions` in Firestore, instantly updating bot responses across all connected Discord servers without requiring Pi redeployments or server restarts.
 
 ---
 
-## 🚀 Raspberry Pi Docker Deployment (5 Containers)
+## ☁️ Firebase Apps Cloud & Decentralized Deployment Pivot
+
+We have pivoted from hosting exclusively on a single local Raspberry Pi to **Firebase Apps (Firebase Hosting & Firebase App Hosting)** for multi-region scalability and decentralized use.
+
+### 1. Firebase Hosting Deployment
+Build and deploy the React Control App to global Firebase Hosting CDN:
+```bash
+npm run build
+firebase deploy --only hosting
+```
+
+### 2. Decentralized Multi-Guild Setup
+Each bot container or server instance connects to the shared Firebase Firestore project via `.env`:
+* `HUB_GUILD_ID`: Hub Discord Server ID (QNW Fantasy / ChainLink)
+* `CLUB602_GUILD_ID`: Standalone Club 602 Discord Server ID
+* `FIREBASE_SERVICE_ACCOUNT_PATH`: Path to Firebase Service Account JSON credentials
+
+---
+
+## 🚀 Raspberry Pi / Docker Container Setup (Optional Local Node)
 
 ### 1. Configure `.env`
 ```bash
